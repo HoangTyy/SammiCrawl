@@ -7,9 +7,13 @@ import {
   Wand2, 
   ShieldCheck, 
   Plus, 
-  Activity 
+  Activity,
+  Sun,
+  Moon,
+  Languages
 } from 'lucide-react';
 import type { NavigationTab, EngineTelemetry } from '../types';
+import { useApp } from '../context/AppContext';
 
 interface NavbarProps {
   currentTab: NavigationTab;
@@ -24,13 +28,15 @@ export const Navbar: React.FC<NavbarProps> = ({
   telemetry,
   onOpenMissionModal
 }) => {
+  const { theme, toggleTheme, language, toggleLanguage, t } = useApp();
+
   const tabs = [
-    { id: 'dashboard' as NavigationTab, label: 'Dashboard', icon: LayoutGrid },
-    { id: 'crawler-studio' as NavigationTab, label: 'Crawl Studio', icon: Terminal },
-    { id: 'queue' as NavigationTab, label: 'Hàng đợi (Queue)', icon: Activity },
-    { id: 'data-vault' as NavigationTab, label: 'Kho Dữ liệu', icon: Database },
-    { id: 'ai-rewriter' as NavigationTab, label: 'AI Rewriter', icon: Wand2 },
-    { id: 'proxy-stealth' as NavigationTab, label: 'Proxy & Stealth', icon: ShieldCheck }
+    { id: 'dashboard' as NavigationTab, label: t.navbar.dashboard, icon: LayoutGrid },
+    { id: 'crawler-studio' as NavigationTab, label: t.navbar.studio, icon: Terminal },
+    { id: 'queue' as NavigationTab, label: t.navbar.queue, icon: Activity },
+    { id: 'data-vault' as NavigationTab, label: t.navbar.vault, icon: Database },
+    { id: 'ai-rewriter' as NavigationTab, label: t.navbar.rewriter, icon: Wand2 },
+    { id: 'proxy-stealth' as NavigationTab, label: t.navbar.proxy, icon: ShieldCheck }
   ];
 
   return (
@@ -45,7 +51,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span className="brand-main-title">SAMMICRAWL</span>
               <span className="brand-tag-spec">CORE // v1.0</span>
             </div>
-            <span className="brand-sub-title">Facebook Neural Data Engine</span>
+            <span className="brand-sub-title">{t.navbar.brandSub}</span>
           </div>
         </div>
       </div>
@@ -73,13 +79,36 @@ export const Navbar: React.FC<NavbarProps> = ({
         {/* Telemetry pill */}
         <div className="telemetry-pill">
           <span className="telemetry-dot pulse-emerald"></span>
-          <span className="telemetry-text">.NET 10 API // {telemetry.apiLatencyMs}ms</span>
+          <span className="telemetry-text">{t.navbar.apiBridge} {telemetry.apiLatencyMs}ms</span>
         </div>
 
         {/* Nodes pill */}
         <div className="telemetry-pill nodes">
-          <span className="telemetry-text">Cluster: {telemetry.workerNodesOnline} Nodes Ready</span>
+          <span className="telemetry-text">
+            {t.navbar.clusterReady.replace('{count}', telemetry.workerNodesOnline.toString())}
+          </span>
         </div>
+
+        {/* Language Switcher */}
+        <button
+          type="button"
+          className="btn-toggle-switch"
+          onClick={toggleLanguage}
+          title={language === 'vi' ? 'Switch to English' : 'Chuyển sang Tiếng Việt'}
+        >
+          <Languages size={15} />
+          <span className="lang-code">{language.toUpperCase()}</span>
+        </button>
+
+        {/* Theme Switcher */}
+        <button
+          type="button"
+          className="btn-toggle-switch"
+          onClick={toggleTheme}
+          title={theme === 'dark' ? t.navbar.lightMode : t.navbar.darkMode}
+        >
+          {theme === 'dark' ? <Sun size={16} className="sun-icon" /> : <Moon size={16} className="moon-icon" />}
+        </button>
 
         {/* Action Button */}
         <button
@@ -88,7 +117,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           onClick={onOpenMissionModal}
         >
           <Plus size={15} />
-          <span>Launch Mission</span>
+          <span>{t.navbar.launchMission}</span>
         </button>
       </div>
     </header>

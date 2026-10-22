@@ -6,8 +6,10 @@ import {
   CheckCircle2, 
   RefreshCw 
 } from 'lucide-react';
+import { useApp } from '../../context/AppContext';
 
 export const ProxySettingsView: React.FC = () => {
+  const { t } = useApp();
   const [proxyList, setProxyList] = useState<string>('');
   const [proxyMode, setProxyMode] = useState('direct');
   const [apiEndpoint, setApiEndpoint] = useState('http://localhost:7142/api/crawl');
@@ -27,8 +29,8 @@ export const ProxySettingsView: React.FC = () => {
     <div className="view-container proxy-view">
       <div className="view-header-strip">
         <div>
-          <h2 className="view-title">Proxy Pool & Anti-Detection Stealth</h2>
-          <p className="view-subtitle">Cấu hình mạng IP xoay vòng, dấu vân tay trình duyệt (Fingerprint) và cầu nối Backend .NET</p>
+          <h2 className="view-title">{t.proxy.title}</h2>
+          <p className="view-subtitle">{t.proxy.subtitle}</p>
         </div>
       </div>
 
@@ -38,18 +40,18 @@ export const ProxySettingsView: React.FC = () => {
           <div className="panel-header-line">
             <div className="panel-title-group">
               <Wifi size={16} className="text-cyan" />
-              <h3 className="panel-title-text">Hồ chứa IP (Proxy Pool Manager)</h3>
+              <h3 className="panel-title-text">{t.proxy.poolTitle}</h3>
             </div>
-            <span className="badge-ip-count">0 IPs Active</span>
+            <span className="badge-ip-count">{t.proxy.ipCount.replace('{count}', '0')}</span>
           </div>
 
           <div className="form-group-cyber">
-            <label className="cyber-label">Chế độ định tuyến mạng:</label>
+            <label className="cyber-label">{t.proxy.routingMode}</label>
             <div className="radio-pills-row">
               {[
-                { id: 'direct', label: 'Direct IP (Cào trực tiếp)' },
-                { id: 'rotating', label: 'Rotating Residential' },
-                { id: 'datacenter', label: 'Dedicated Datacenter' }
+                { id: 'direct', label: t.proxy.modeDirect },
+                { id: 'rotating', label: t.proxy.modeRotating },
+                { id: 'datacenter', label: t.proxy.modeDatacenter }
               ].map(opt => (
                 <button
                   key={opt.id}
@@ -64,25 +66,25 @@ export const ProxySettingsView: React.FC = () => {
           </div>
 
           <div className="form-group-cyber">
-            <label className="cyber-label">Danh sách Proxy (Định dạng: IP:Port:User:Pass)</label>
+            <label className="cyber-label">{t.proxy.listLabel}</label>
             <textarea
               rows={6}
-              placeholder="103.142.25.10:8080:username:password&#10;114.119.130.45:3128&#10;(Mỗi dòng một địa chỉ proxy...)"
+              placeholder={t.proxy.listPlaceholder}
               value={proxyList}
               onChange={(e) => setProxyList(e.target.value)}
               className="cyber-textarea-field"
             />
-            <span className="cyber-hint">Hệ thống tự động xoay vòng IP sau mỗi 5 yêu cầu để tránh checkpoint Facebook.</span>
+            <span className="cyber-hint">{t.proxy.listHint}</span>
           </div>
 
           <div className="proxy-stats-sub">
             <div className="proxy-sub-item">
-              <span className="sub-label">Tỉ lệ xoay vòng:</span>
-              <span className="sub-val">Auto-Rotate per target</span>
+              <span className="sub-label">{t.proxy.rateLabel}</span>
+              <span className="sub-val">{t.proxy.rateVal}</span>
             </div>
             <div className="proxy-sub-item">
-              <span className="sub-label">Giao thức hỗ trợ:</span>
-              <span className="sub-val">HTTP, HTTPS, SOCKS5</span>
+              <span className="sub-label">{t.proxy.protoLabel}</span>
+              <span className="sub-val">{t.proxy.protoVal}</span>
             </div>
           </div>
         </div>
@@ -94,33 +96,33 @@ export const ProxySettingsView: React.FC = () => {
             <div className="panel-header-line">
               <div className="panel-title-group">
                 <ShieldCheck size={16} className="text-emerald" />
-                <h3 className="panel-title-text">Bảo vệ Chống Bot (Anti-Fingerprint)</h3>
+                <h3 className="panel-title-text">{t.proxy.stealthTitle}</h3>
               </div>
-              <span className="tag-stealth-active">Active</span>
+              <span className="tag-stealth-active">{t.proxy.stealthStatus}</span>
             </div>
 
             <div className="stealth-checks-list">
               <div className="stealth-item">
                 <CheckCircle2 size={15} className="text-emerald" />
                 <div className="stealth-item-info">
-                  <span className="stealth-name">WebGL & Canvas Noise</span>
-                  <span className="stealth-desc">Mô phỏng ngẫu nhiên cấu trúc card đồ họa thật</span>
+                  <span className="stealth-name">{t.proxy.webglTitle}</span>
+                  <span className="stealth-desc">{t.proxy.webglDesc}</span>
                 </div>
               </div>
 
               <div className="stealth-item">
                 <CheckCircle2 size={15} className="text-emerald" />
                 <div className="stealth-item-info">
-                  <span className="stealth-name">WebRTC Leak Shield</span>
-                  <span className="stealth-desc">Chặn rò rỉ IP nội bộ qua giao thức truyền thông WebRTC</span>
+                  <span className="stealth-name">{t.proxy.webrtcTitle}</span>
+                  <span className="stealth-desc">{t.proxy.webrtcDesc}</span>
                 </div>
               </div>
 
               <div className="stealth-item">
                 <CheckCircle2 size={15} className="text-emerald" />
                 <div className="stealth-item-info">
-                  <span className="stealth-name">Humanized Mouse & Touch</span>
-                  <span className="stealth-desc">Đường cong di chuột Bézier ngẫu nhiên chống AI Bot Detect</span>
+                  <span className="stealth-name">{t.proxy.mouseTitle}</span>
+                  <span className="stealth-desc">{t.proxy.mouseDesc}</span>
                 </div>
               </div>
             </div>
@@ -131,15 +133,15 @@ export const ProxySettingsView: React.FC = () => {
             <div className="panel-header-line">
               <div className="panel-title-group">
                 <Server size={16} className="text-indigo" />
-                <h3 className="panel-title-text">Backend .NET 10 API Bridge</h3>
+                <h3 className="panel-title-text">{t.proxy.bridgeTitle}</h3>
               </div>
               {apiStatus === 'connected' && (
-                <span className="tag-cluster-online">Đã kết nối</span>
+                <span className="tag-cluster-online">{t.proxy.bridgeConnected}</span>
               )}
             </div>
 
             <div className="form-group-cyber">
-              <label className="cyber-label">REST API Ingest Endpoint:</label>
+              <label className="cyber-label">{t.proxy.endpointLabel}</label>
               <div className="input-with-button">
                 <input
                   type="text"
@@ -153,11 +155,11 @@ export const ProxySettingsView: React.FC = () => {
                   onClick={testConnection}
                   disabled={testingApi}
                 >
-                  {testingApi ? <RefreshCw size={14} className="spin-fast" /> : <RefreshCw size={14} />}
-                  <span>Test Ping</span>
+                  <RefreshCw size={14} className={testingApi ? 'spin-fast' : ''} />
+                  <span>{t.proxy.btnTestPing}</span>
                 </button>
               </div>
-              <span className="cyber-hint">Kết nối trực tiếp tới ASP.NET Core Web API của dự án SammiCrawl.</span>
+              <span className="cyber-hint">{t.proxy.endpointHint}</span>
             </div>
           </div>
         </div>

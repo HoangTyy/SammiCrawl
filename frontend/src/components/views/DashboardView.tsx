@@ -12,6 +12,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import type { EngineTelemetry, TargetType } from '../../types';
+import { useApp } from '../../context/AppContext';
 
 interface DashboardViewProps {
   telemetry: EngineTelemetry;
@@ -26,6 +27,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onLaunchTarget,
   onNavigateToStudio
 }) => {
+  const { t } = useApp();
   const [quickUrl, setQuickUrl] = useState('');
   const [selectedType, setSelectedType] = useState<TargetType>('page');
   const [copied, setCopied] = useState(false);
@@ -50,61 +52,61 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         {/* Metric 1 */}
         <div className="bento-stat-card card-cyan">
           <div className="stat-card-header">
-            <span className="stat-label">Mục tiêu giám sát</span>
+            <span className="stat-label">{t.dashboard.statTargets}</span>
             <div className="stat-icon-wrap cyan">
               <Crosshair size={16} />
             </div>
           </div>
           <div className="stat-value-group">
             <span className="stat-number">{telemetry.activeTargets}</span>
-            <span className="stat-badge cyan">Zero Targets</span>
+            <span className="stat-badge cyan">{t.dashboard.zeroTargets}</span>
           </div>
-          <span className="stat-footnote">Chưa có Fanpage / Group nào được gán</span>
+          <span className="stat-footnote">{t.dashboard.statTargetsFootnote}</span>
         </div>
 
         {/* Metric 2 */}
         <div className="bento-stat-card card-emerald">
           <div className="stat-card-header">
-            <span className="stat-label">Dữ liệu thu nạp</span>
+            <span className="stat-label">{t.dashboard.statCaptured}</span>
             <div className="stat-icon-wrap emerald">
               <Globe2 size={16} />
             </div>
           </div>
           <div className="stat-value-group">
             <span className="stat-number">{telemetry.postsCaptured}</span>
-            <span className="stat-badge emerald">0 Posts / 0 Comments</span>
+            <span className="stat-badge emerald">{t.dashboard.zeroCaptured}</span>
           </div>
-          <span className="stat-footnote">Sẵn sàng nhận payload từ Puppeteer Node</span>
+          <span className="stat-footnote">{t.dashboard.statCapturedFootnote}</span>
         </div>
 
         {/* Metric 3 */}
         <div className="bento-stat-card card-indigo">
           <div className="stat-card-header">
-            <span className="stat-label">Hàng đợi điều phối</span>
+            <span className="stat-label">{t.dashboard.statQueue}</span>
             <div className="stat-icon-wrap indigo">
               <Layers size={16} />
             </div>
           </div>
           <div className="stat-value-group">
             <span className="stat-number">{telemetry.queueDepth}</span>
-            <span className="stat-badge indigo">Queue Idle</span>
+            <span className="stat-badge indigo">{t.dashboard.queueIdle}</span>
           </div>
-          <span className="stat-footnote">0 tác vụ đang chờ phân bổ CPU</span>
+          <span className="stat-footnote">{t.dashboard.statQueueFootnote}</span>
         </div>
 
         {/* Metric 4 */}
         <div className="bento-stat-card card-amber">
           <div className="stat-card-header">
-            <span className="stat-label">Trạng thái Stealth Node</span>
+            <span className="stat-label">{t.dashboard.statStealth}</span>
             <div className="stat-icon-wrap amber">
               <Cpu size={16} />
             </div>
           </div>
           <div className="stat-value-group">
             <span className="stat-number">{telemetry.systemHealth}%</span>
-            <span className="stat-badge amber">100% Anti-Ban Ready</span>
+            <span className="stat-badge amber">{t.dashboard.stealthReady}</span>
           </div>
-          <span className="stat-footnote">Chromium User-Agent Rotator đã nạp</span>
+          <span className="stat-footnote">{t.dashboard.statStealthFootnote}</span>
         </div>
       </div>
 
@@ -117,27 +119,27 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div className="panel-header-line">
               <div className="panel-title-group">
                 <Sparkles size={16} className="text-cyan" />
-                <h3 className="panel-title-text">Quick Crawl Dispatcher</h3>
+                <h3 className="panel-title-text">{t.dashboard.quickTitle}</h3>
               </div>
               <button 
                 type="button" 
                 className="btn-ghost-cyan" 
                 onClick={onNavigateToStudio}
               >
-                <span>Chế độ Studio Nâng cao</span>
+                <span>{t.dashboard.quickStudioMode}</span>
                 <ArrowUpRight size={14} />
               </button>
             </div>
 
             <p className="panel-desc-text">
-              Dán đường dẫn Facebook để hệ thống phân bổ tác vụ tự động vào Cluster Crawler Node.
+              {t.dashboard.quickDesc}
             </p>
 
             <form onSubmit={handleQuickSubmit} className="quick-dispatch-form">
               <div className="dispatch-input-row">
                 <input
                   type="url"
-                  placeholder="https://www.facebook.com/vietnamnet.vn..."
+                  placeholder={t.dashboard.urlPlaceholder}
                   value={quickUrl}
                   onChange={(e) => setQuickUrl(e.target.value)}
                   className="cyber-input"
@@ -145,12 +147,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 />
                 <button type="submit" className="btn-dispatch-submit">
                   <Send size={15} />
-                  <span>Kích hoạt</span>
+                  <span>{t.dashboard.btnDeploy}</span>
                 </button>
               </div>
 
               <div className="dispatch-chips-row">
-                <span className="chips-title">Loại mục tiêu:</span>
+                <span className="chips-title">{t.dashboard.targetType}</span>
                 {(['page', 'group', 'profile'] as TargetType[]).map(type => (
                   <button
                     key={type}
@@ -158,7 +160,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     className={`chip-btn ${selectedType === type ? 'active' : ''}`}
                     onClick={() => setSelectedType(type)}
                   >
-                    {type === 'page' ? 'Fanpage' : type === 'group' ? 'Nhóm (Group)' : 'Profile'}
+                    {type === 'page' ? t.dashboard.fanpage : type === 'group' ? t.dashboard.group : t.dashboard.profile}
                   </button>
                 ))}
               </div>
@@ -170,17 +172,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div className="panel-header-line">
               <div className="panel-title-group">
                 <Activity size={16} className="text-emerald" />
-                <h3 className="panel-title-text">Crawler Cluster Nodes (Worker Topology)</h3>
+                <h3 className="panel-title-text">{t.dashboard.clusterTopology}</h3>
               </div>
-              <span className="tag-cluster-online">4 Nodes Online</span>
+              <span className="tag-cluster-online">{t.dashboard.nodesOnline}</span>
             </div>
 
             <div className="nodes-grid">
               {[
-                { name: 'Worker-Alpha', engine: 'Chromium Stealth', status: 'Idle', load: '0%' },
-                { name: 'Worker-Beta', engine: 'Chromium Stealth', status: 'Idle', load: '0%' },
-                { name: 'Worker-Gamma', engine: 'API Scraper', status: 'Idle', load: '0%' },
-                { name: 'Worker-Delta', engine: 'Media Extractor', status: 'Idle', load: '0%' }
+                { name: 'Worker-Alpha', engine: 'Chromium Stealth', status: t.dashboard.idle, load: '0%' },
+                { name: 'Worker-Beta', engine: 'Chromium Stealth', status: t.dashboard.idle, load: '0%' },
+                { name: 'Worker-Gamma', engine: 'API Scraper', status: t.dashboard.idle, load: '0%' },
+                { name: 'Worker-Delta', engine: 'Media Extractor', status: t.dashboard.idle, load: '0%' }
               ].map((node, i) => (
                 <div key={i} className="node-tile">
                   <div className="node-tile-top">
@@ -207,14 +209,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <span className="dot yellow"></span>
                 <span className="dot green"></span>
               </div>
-              <span className="terminal-title">SAMMICRAWL // LIVE TELEMETRY LOGS</span>
+              <span className="terminal-title">{t.dashboard.terminalTitle}</span>
               <button 
                 type="button" 
                 className="btn-copy-terminal"
                 onClick={handleCopyLogs}
               >
                 {copied ? <Check size={12} /> : <Copy size={12} />}
-                <span>{copied ? 'Copied' : 'Copy'}</span>
+                <span>{copied ? t.dashboard.copied : t.dashboard.copy}</span>
               </button>
             </div>
 
@@ -232,9 +234,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
 
             <div className="terminal-footer-meta">
-              <span>Bridge: .NET 10 API Connected</span>
-              <span>Memory: 42MB</span>
-              <span>Proxy Rotation: 0 Active</span>
+              <span>{t.dashboard.bridgeConnected}</span>
+              <span>{t.dashboard.memory} 42MB</span>
+              <span>{t.dashboard.proxyRotation} 0</span>
             </div>
           </div>
         </div>

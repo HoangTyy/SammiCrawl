@@ -12,6 +12,7 @@ import {
   Cpu
 } from 'lucide-react';
 import type { CrawlTask, TaskStatus } from '../../types';
+import { useApp } from '../../context/AppContext';
 
 interface TaskQueueViewProps {
   tasks: CrawlTask[];
@@ -24,6 +25,7 @@ export const TaskQueueView: React.FC<TaskQueueViewProps> = ({
   onDeleteTask,
   onNavigateToStudio
 }) => {
+  const { t } = useApp();
   const [activeFilter, setActiveFilter] = useState<string>('all');
   const [searchKey, setSearchKey] = useState<string>('');
 
@@ -40,26 +42,26 @@ export const TaskQueueView: React.FC<TaskQueueViewProps> = ({
       case 'running':
         return (
           <span className="queue-status-badge running">
-            <RotateCw size={12} className="spin-fast" /> Crawling
+            <RotateCw size={12} className="spin-fast" /> {t.queue.filterRunning}
           </span>
         );
       case 'completed':
         return (
           <span className="queue-status-badge completed">
-            <CheckCircle2 size={12} /> Stored
+            <CheckCircle2 size={12} /> {t.queue.filterCompleted}
           </span>
         );
       case 'failed':
         return (
           <span className="queue-status-badge failed">
-            <AlertCircle size={12} /> Checkpoint
+            <AlertCircle size={12} /> {t.queue.filterFailed}
           </span>
         );
       case 'pending':
       default:
         return (
           <span className="queue-status-badge pending">
-            <Clock size={12} /> In Queue
+            <Clock size={12} /> {t.queue.filterPending}
           </span>
         );
     }
@@ -70,16 +72,16 @@ export const TaskQueueView: React.FC<TaskQueueViewProps> = ({
       {/* Pipeline Visualizer Strip */}
       <div className="pipeline-strip-card">
         <div className="pipeline-header">
-          <span className="pipeline-title">KIẾN TRÚC LUỒNG XỬ LÝ (DATA PIPELINE TOPOLOGY)</span>
-          <span className="pipeline-tag">Auto-Balanced</span>
+          <span className="pipeline-title">{t.queue.pipelineTitle}</span>
+          <span className="pipeline-tag">{t.queue.pipelineTag}</span>
         </div>
 
         <div className="pipeline-steps-row">
           <div className="pipeline-step-box active">
             <div className="step-num">01</div>
             <div className="step-details">
-              <span className="step-name">Dispatcher</span>
-              <span className="step-sub">Nhận URL & Phân bổ</span>
+              <span className="step-name">{t.queue.step1Name}</span>
+              <span className="step-sub">{t.queue.step1Sub}</span>
             </div>
           </div>
           <ArrowRight size={16} className="pipeline-arrow" />
@@ -87,8 +89,8 @@ export const TaskQueueView: React.FC<TaskQueueViewProps> = ({
           <div className="pipeline-step-box active">
             <div className="step-num">02</div>
             <div className="step-details">
-              <span className="step-name">Stealth Browser</span>
-              <span className="step-sub">Evasion & Auto-Scroll</span>
+              <span className="step-name">{t.queue.step2Name}</span>
+              <span className="step-sub">{t.queue.step2Sub}</span>
             </div>
           </div>
           <ArrowRight size={16} className="pipeline-arrow" />
@@ -96,8 +98,8 @@ export const TaskQueueView: React.FC<TaskQueueViewProps> = ({
           <div className="pipeline-step-box active">
             <div className="step-num">03</div>
             <div className="step-details">
-              <span className="step-name">DOM Parser</span>
-              <span className="step-sub">Bóc bài & comments</span>
+              <span className="step-name">{t.queue.step3Name}</span>
+              <span className="step-sub">{t.queue.step3Sub}</span>
             </div>
           </div>
           <ArrowRight size={16} className="pipeline-arrow" />
@@ -105,8 +107,8 @@ export const TaskQueueView: React.FC<TaskQueueViewProps> = ({
           <div className="pipeline-step-box">
             <div className="step-num">04</div>
             <div className="step-details">
-              <span className="step-name">AI Cleaning</span>
-              <span className="step-sub">Lọc trùng & Spam</span>
+              <span className="step-name">{t.queue.step4Name}</span>
+              <span className="step-sub">{t.queue.step4Sub}</span>
             </div>
           </div>
           <ArrowRight size={16} className="pipeline-arrow" />
@@ -114,8 +116,8 @@ export const TaskQueueView: React.FC<TaskQueueViewProps> = ({
           <div className="pipeline-step-box">
             <div className="step-num">05</div>
             <div className="step-details">
-              <span className="step-name">.NET 10 Storage</span>
-              <span className="step-sub">EF Core Database Sync</span>
+              <span className="step-name">{t.queue.step5Name}</span>
+              <span className="step-sub">{t.queue.step5Sub}</span>
             </div>
           </div>
         </div>
@@ -126,18 +128,18 @@ export const TaskQueueView: React.FC<TaskQueueViewProps> = ({
         <div className="panel-header-line">
           <div className="panel-title-group">
             <Activity size={16} className="text-cyan" />
-            <h3 className="panel-title-text">Hàng đợi Tác vụ Real-time ({tasks.length})</h3>
+            <h3 className="panel-title-text">{t.queue.queueTitle} ({tasks.length})</h3>
           </div>
 
           <div className="queue-controls-right">
             {/* Filter buttons */}
             <div className="cyber-filter-pill-group">
               {[
-                { id: 'all', label: 'Tất cả' },
-                { id: 'running', label: 'Đang chạy' },
-                { id: 'pending', label: 'Chờ' },
-                { id: 'completed', label: 'Xong' },
-                { id: 'failed', label: 'Lỗi' }
+                { id: 'all', label: t.queue.filterAll },
+                { id: 'running', label: t.queue.filterRunning },
+                { id: 'pending', label: t.queue.filterPending },
+                { id: 'completed', label: t.queue.filterCompleted },
+                { id: 'failed', label: t.queue.filterFailed }
               ].map(tab => (
                 <button
                   key={tab.id}
@@ -152,7 +154,7 @@ export const TaskQueueView: React.FC<TaskQueueViewProps> = ({
 
             <input
               type="text"
-              placeholder="Lọc ID / Tên mục tiêu..."
+              placeholder={t.queue.searchPlaceholder}
               value={searchKey}
               onChange={(e) => setSearchKey(e.target.value)}
               className="queue-search-input"
@@ -164,7 +166,7 @@ export const TaskQueueView: React.FC<TaskQueueViewProps> = ({
               onClick={onNavigateToStudio}
             >
               <Plus size={14} />
-              <span>Tạo Mission</span>
+              <span>{t.queue.btnCreateMission}</span>
             </button>
           </div>
         </div>
@@ -178,11 +180,8 @@ export const TaskQueueView: React.FC<TaskQueueViewProps> = ({
               <Cpu size={32} className="radar-icon-center" />
             </div>
 
-            <h4 className="empty-heading">Hàng đợi điều phối rỗng (Zero Tasks in Queue)</h4>
-            <p className="empty-sub">
-              Hiện tại không có tác vụ nào đang chiếm dụng tài nguyên Worker Node. 
-              Các tiến trình Chromium Headless đang ở trạng thái ngủ (Standby) sẵn sàng nhận lệnh.
-            </p>
+            <h4 className="empty-heading">{t.queue.emptyHeading}</h4>
+            <p className="empty-sub">{t.queue.emptySub}</p>
 
             <button 
               type="button" 
@@ -190,7 +189,7 @@ export const TaskQueueView: React.FC<TaskQueueViewProps> = ({
               onClick={onNavigateToStudio}
             >
               <Plus size={15} />
-              <span>Khởi tạo Mission cào mới từ Studio</span>
+              <span>{t.queue.btnNewFromStudio}</span>
             </button>
           </div>
         ) : (
@@ -198,13 +197,13 @@ export const TaskQueueView: React.FC<TaskQueueViewProps> = ({
             <table className="cyber-table">
               <thead>
                 <tr>
-                  <th>Mục tiêu Facebook</th>
-                  <th>Phân loại</th>
-                  <th>Worker Node</th>
-                  <th>Tiến độ</th>
-                  <th>Độ trễ</th>
-                  <th>Trạng thái</th>
-                  <th className="text-right">Quản trị</th>
+                  <th>{t.queue.colTarget}</th>
+                  <th>{t.queue.colType}</th>
+                  <th>{t.queue.colWorker}</th>
+                  <th>{t.queue.colProgress}</th>
+                  <th>{t.queue.colLatency}</th>
+                  <th>{t.queue.colStatus}</th>
+                  <th className="text-right">{t.queue.colActions}</th>
                 </tr>
               </thead>
               <tbody>
@@ -249,7 +248,7 @@ export const TaskQueueView: React.FC<TaskQueueViewProps> = ({
                         type="button" 
                         className="btn-delete-cyber"
                         onClick={() => onDeleteTask(task.id)}
-                        title="Hủy tác vụ"
+                        title="Delete task"
                       >
                         <Trash2 size={14} />
                       </button>

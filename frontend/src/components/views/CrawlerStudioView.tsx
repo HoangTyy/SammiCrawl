@@ -11,12 +11,14 @@ import {
   Key
 } from 'lucide-react';
 import type { TargetType, CrawlTask } from '../../types';
+import { useApp } from '../../context/AppContext';
 
 interface CrawlerStudioViewProps {
   onDeployMission: (task: Omit<CrawlTask, 'id' | 'status' | 'crawledPosts' | 'createdAt' | 'progress' | 'workerNode' | 'ipAddress' | 'latencyMs'>) => void;
 }
 
 export const CrawlerStudioView: React.FC<CrawlerStudioViewProps> = ({ onDeployMission }) => {
+  const { t } = useApp();
   const [url, setUrl] = useState('');
   const [targetName, setTargetName] = useState('');
   const [targetType, setTargetType] = useState<TargetType>('page');
@@ -62,33 +64,33 @@ export const CrawlerStudioView: React.FC<CrawlerStudioViewProps> = ({ onDeployMi
     <div className="view-container studio-view">
       <div className="view-header-strip">
         <div>
-          <h2 className="view-title">Facebook Crawler Studio</h2>
-          <p className="view-subtitle">Không gian cấu hình chuyên sâu các thông số thu thập dữ liệu Facebook tự động</p>
+          <h2 className="view-title">{t.studio.title}</h2>
+          <p className="view-subtitle">{t.studio.subtitle}</p>
         </div>
 
         {/* Preset Buttons */}
         <div className="preset-buttons-row">
-          <span className="preset-label">Mẫu nhanh:</span>
+          <span className="preset-label">{t.studio.presets}</span>
           <button 
             type="button" 
             className="btn-preset" 
             onClick={() => applyPreset('page', 20, true, true)}
           >
-            Quét Tin Fanpage
+            {t.studio.presetPage}
           </button>
           <button 
             type="button" 
             className="btn-preset" 
             onClick={() => applyPreset('group', 50, true, false)}
           >
-            Quét Thảo Luận Group
+            {t.studio.presetGroup}
           </button>
           <button 
             type="button" 
             className="btn-preset" 
             onClick={() => applyPreset('reel', 30, false, true)}
           >
-            Quét Viral Reels
+            {t.studio.presetReels}
           </button>
         </div>
       </div>
@@ -96,7 +98,7 @@ export const CrawlerStudioView: React.FC<CrawlerStudioViewProps> = ({ onDeployMi
       {successToast && (
         <div className="toast-cyber-success">
           <CheckCircle2 size={16} />
-          <span>Mission đã được gửi tới Task Queue! Worker đang chuẩn bị phân giải DOM.</span>
+          <span>{t.studio.toastSuccess}</span>
         </div>
       )}
 
@@ -105,12 +107,12 @@ export const CrawlerStudioView: React.FC<CrawlerStudioViewProps> = ({ onDeployMi
         <div className="studio-left-card">
           <div className="card-section-header">
             <Sliders size={16} className="text-cyan" />
-            <h3 className="section-title">1. Thông tin Mục tiêu & Định danh</h3>
+            <h3 className="section-title">{t.studio.sec1Title}</h3>
           </div>
 
           <div className="form-group-cyber">
             <label className="cyber-label">
-              Đường dẫn Facebook (URL) <span className="req">*</span>
+              {t.studio.urlLabel} <span className="req">*</span>
             </label>
             <input
               type="url"
@@ -120,15 +122,15 @@ export const CrawlerStudioView: React.FC<CrawlerStudioViewProps> = ({ onDeployMi
               className="cyber-input-field"
               required
             />
-            <span className="cyber-hint">Hỗ trợ Fanpage, Nhóm công khai, Bài viết đơn lẻ, Reels</span>
+            <span className="cyber-hint">{t.studio.urlHint}</span>
           </div>
 
           <div className="form-row-2">
             <div className="form-group-cyber">
-              <label className="cyber-label">Tên gán nhãn gợi nhớ</label>
+              <label className="cyber-label">{t.studio.targetNameLabel}</label>
               <input
                 type="text"
-                placeholder="Tin tức Việt Nam Net"
+                placeholder={t.studio.targetNamePlaceholder}
                 value={targetName}
                 onChange={(e) => setTargetName(e.target.value)}
                 className="cyber-input-field"
@@ -136,29 +138,29 @@ export const CrawlerStudioView: React.FC<CrawlerStudioViewProps> = ({ onDeployMi
             </div>
 
             <div className="form-group-cyber">
-              <label className="cyber-label">Kiểu cấu trúc</label>
+              <label className="cyber-label">{t.studio.typeLabel}</label>
               <select
                 value={targetType}
                 onChange={(e) => setTargetType(e.target.value as TargetType)}
                 className="cyber-select-field"
               >
-                <option value="page">Fanpage Chính Thức</option>
-                <option value="group">Facebook Group Công Khai</option>
-                <option value="profile">Profile Cá Nhân</option>
-                <option value="reel">Reels Video Feed</option>
+                <option value="page">{t.studio.typePage}</option>
+                <option value="group">{t.studio.typeGroup}</option>
+                <option value="profile">{t.studio.typeProfile}</option>
+                <option value="reel">{t.studio.typeReel}</option>
               </select>
             </div>
           </div>
 
           <div className="card-section-header mt-4">
             <Layers size={16} className="text-emerald" />
-            <h3 className="section-title">2. Độ sâu & Dữ liệu cần bóc tách</h3>
+            <h3 className="section-title">{t.studio.sec2Title}</h3>
           </div>
 
           <div className="range-control-group">
             <div className="range-header">
-              <span className="cyber-label">Số lượng bài viết cần cào:</span>
-              <span className="range-badge">{maxPosts} bài</span>
+              <span className="cyber-label">{t.studio.postsLimitLabel}</span>
+              <span className="range-badge">{maxPosts} {t.studio.postsUnit}</span>
             </div>
             <input
               type="range"
@@ -181,9 +183,9 @@ export const CrawlerStudioView: React.FC<CrawlerStudioViewProps> = ({ onDeployMi
               <div className="toggle-content">
                 <div className="toggle-title-line">
                   <MessageSquare size={15} />
-                  <span>Cào Bình luận & Tương tác</span>
+                  <span>{t.studio.toggleComments}</span>
                 </div>
-                <span className="toggle-sub">Thu nạp top comments, tác giả và thời gian phản hồi</span>
+                <span className="toggle-sub">{t.studio.toggleCommentsSub}</span>
               </div>
             </label>
 
@@ -196,9 +198,9 @@ export const CrawlerStudioView: React.FC<CrawlerStudioViewProps> = ({ onDeployMi
               <div className="toggle-content">
                 <div className="toggle-title-line">
                   <Image size={15} />
-                  <span>Trích xuất Media & CDN URL</span>
+                  <span>{t.studio.toggleMedia}</span>
                 </div>
-                <span className="toggle-sub">Lưu trữ URL ảnh chất lượng cao và preview video</span>
+                <span className="toggle-sub">{t.studio.toggleMediaSub}</span>
               </div>
             </label>
           </div>
@@ -208,13 +210,13 @@ export const CrawlerStudioView: React.FC<CrawlerStudioViewProps> = ({ onDeployMi
         <div className="studio-right-card">
           <div className="card-section-header">
             <ShieldCheck size={16} className="text-amber" />
-            <h3 className="section-title">3. Cơ chế Chống Checkpoint (Stealth Shield)</h3>
+            <h3 className="section-title">{t.studio.sec3Title}</h3>
           </div>
 
           <div className="range-control-group">
             <div className="range-header">
-              <span className="cyber-label">Độ trễ cuộn trang mô phỏng người dùng:</span>
-              <span className="range-badge">{scrollDelay}s / cuộn</span>
+              <span className="cyber-label">{t.studio.scrollDelayLabel}</span>
+              <span className="range-badge">{scrollDelay} {t.studio.delayUnit}</span>
             </div>
             <input
               type="range"
@@ -229,29 +231,29 @@ export const CrawlerStudioView: React.FC<CrawlerStudioViewProps> = ({ onDeployMi
 
           <div className="form-group-cyber">
             <label className="cyber-label">
-              <Key size={14} className="inline-icon" /> Cookie tài khoản Facebook phụ (Tùy chọn)
+              <Key size={14} className="inline-icon" /> {t.studio.cookieLabel}
             </label>
             <textarea
               rows={4}
-              placeholder="c_user=...; xs=...; datr=... (Dành cho việc quét Group kín hoặc tránh bot challenge)"
+              placeholder={t.studio.cookiePlaceholder}
               value={cookieData}
               onChange={(e) => setCookieData(e.target.value)}
               className="cyber-textarea-field"
             />
-            <span className="cyber-hint">Để trống nếu muốn chạy chế độ Guest Stealth (Cào tự do không login).</span>
+            <span className="cyber-hint">{t.studio.cookieHint}</span>
           </div>
 
           <div className="pipeline-destination-box">
             <Database size={15} className="text-cyan" />
             <div className="dest-text">
-              <span className="dest-title">Đích lưu trữ tự động:</span>
-              <span className="dest-desc">Tự động nạp vào Backend .NET 10 qua REST API (`/api/crawl/ingest`)</span>
+              <span className="dest-title">{t.studio.destTitle}</span>
+              <span className="dest-desc">{t.studio.destDesc}</span>
             </div>
           </div>
 
           <button type="submit" className="btn-launch-full">
             <Play size={16} fill="currentColor" />
-            <span>Kích hoạt Mission vào Hàng Đợi</span>
+            <span>{t.studio.btnDeployFull}</span>
           </button>
         </div>
       </form>

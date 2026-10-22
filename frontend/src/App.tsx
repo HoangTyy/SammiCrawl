@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { AppProvider } from './context/AppContext';
 import { Navbar } from './components/Navbar';
 import { DashboardView } from './components/views/DashboardView';
 import { CrawlerStudioView } from './components/views/CrawlerStudioView';
@@ -10,7 +11,7 @@ import { MissionModal } from './components/MissionModal';
 import type { NavigationTab, CrawlTask, EngineTelemetry, TargetType } from './types';
 import './App.css';
 
-export function App() {
+function MainAppShell() {
   const [currentTab, setCurrentTab] = useState<NavigationTab>('dashboard');
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -156,6 +157,14 @@ export function App() {
         onDeploy={handleDeployFull}
       />
     </div>
+  );
+}
+
+export function App() {
+  return (
+    <AppProvider>
+      <MainAppShell />
+    </AppProvider>
   );
 }
 

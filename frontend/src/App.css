@@ -167,6 +167,127 @@
   100% { transform: scale(0.95); opacity: 0.8; }
 }
 
+.btn-toggle-switch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.btn-toggle-switch:hover {
+  border-color: var(--cyan-400);
+  color: var(--text-primary);
+  background: var(--bg-surface-elevated);
+  transform: translateY(-1px);
+}
+
+.sun-icon {
+  color: var(--amber-400);
+  transition: transform 0.3s ease;
+}
+
+.moon-icon {
+  color: var(--indigo-400);
+  transition: transform 0.3s ease;
+}
+
+.lang-code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--cyan-400);
+}
+
+/* Light Mode Overrides */
+[data-theme="light"] .cyber-navbar {
+  background: rgba(255, 255, 255, 0.85);
+  border-bottom: 1px solid #e2e8f0;
+}
+
+[data-theme="light"] .brand-main-title {
+  color: #0f172a;
+}
+
+[data-theme="light"] .navbar-center-tabs {
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+}
+
+[data-theme="light"] .cyber-tab-btn:hover {
+  background: #ffffff;
+  color: #0f172a;
+}
+
+[data-theme="light"] .cyber-tab-btn.active {
+  background: #ffffff;
+  color: #0891b2;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  border-color: #0891b2;
+}
+
+[data-theme="light"] .bento-stat-card,
+[data-theme="light"] .cyber-panel,
+[data-theme="light"] .studio-left-card,
+[data-theme="light"] .studio-right-card,
+[data-theme="light"] .pipeline-strip-card,
+[data-theme="light"] .vault-metric-tile {
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
+}
+
+[data-theme="light"] .stat-number,
+[data-theme="light"] .v-tile-val,
+[data-theme="light"] .view-title,
+[data-theme="light"] .section-title,
+[data-theme="light"] .panel-title-text,
+[data-theme="light"] .node-name,
+[data-theme="light"] .step-name,
+[data-theme="light"] .empty-heading,
+[data-theme="light"] .modal-main-title,
+[data-theme="light"] .target-title-main {
+  color: #0f172a;
+}
+
+[data-theme="light"] .cyber-input,
+[data-theme="light"] .cyber-input-field,
+[data-theme="light"] .cyber-select-field,
+[data-theme="light"] .cyber-textarea-field,
+[data-theme="light"] .queue-search-input,
+[data-theme="light"] .search-input-cyber,
+[data-theme="light"] .vault-select,
+[data-theme="light"] .tool-select,
+[data-theme="light"] .rewriter-textarea {
+  background: #ffffff;
+  color: #0f172a;
+  border-color: #cbd5e1;
+}
+
+[data-theme="light"] .cyber-table th {
+  background: #f8fafc;
+  color: #64748b;
+}
+
+[data-theme="light"] .pipeline-step-box,
+[data-theme="light"] .node-tile,
+[data-theme="light"] .stealth-item,
+[data-theme="light"] .cyber-toggle-box,
+[data-theme="light"] .cyber-modal-card {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+}
+
+[data-theme="light"] .output-empty-box {
+  background: #f8fafc;
+}
+
 .btn-launch-cyber {
   display: flex;
   align-items: center;

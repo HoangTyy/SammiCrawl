@@ -5,6 +5,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import type { TargetType, CrawlTask } from '../types';
+import { useApp } from '../context/AppContext';
 
 interface MissionModalProps {
   isOpen: boolean;
@@ -17,6 +18,7 @@ export const MissionModal: React.FC<MissionModalProps> = ({
   onClose,
   onDeploy
 }) => {
+  const { t } = useApp();
   const [url, setUrl] = useState('');
   const [targetName, setTargetName] = useState('');
   const [targetType, setTargetType] = useState<TargetType>('page');
@@ -55,8 +57,8 @@ export const MissionModal: React.FC<MissionModalProps> = ({
           <div className="header-title-box">
             <Sparkles size={18} className="text-cyan" />
             <div>
-              <h3 className="modal-main-title">Khởi chạy Mission Cào Dữ liệu Facebook</h3>
-              <p className="modal-sub-title">Phân bổ luồng điều phối đến Cluster Worker</p>
+              <h3 className="modal-main-title">{t.modal.title}</h3>
+              <p className="modal-sub-title">{t.modal.subtitle}</p>
             </div>
           </div>
           <button type="button" className="btn-close-modal" onClick={onClose}>
@@ -67,7 +69,7 @@ export const MissionModal: React.FC<MissionModalProps> = ({
         <form onSubmit={handleSubmit} className="modal-cyber-form">
           <div className="form-group-cyber">
             <label className="cyber-label">
-              Liên kết Facebook mục tiêu <span className="req">*</span>
+              {t.modal.urlLabel} <span className="req">*</span>
             </label>
             <input
               type="url"
@@ -81,10 +83,10 @@ export const MissionModal: React.FC<MissionModalProps> = ({
 
           <div className="form-row-2">
             <div className="form-group-cyber">
-              <label className="cyber-label">Tên định danh</label>
+              <label className="cyber-label">{t.modal.nameLabel}</label>
               <input
                 type="text"
-                placeholder="VietnamNet Daily"
+                placeholder={t.modal.namePlaceholder}
                 value={targetName}
                 onChange={(e) => setTargetName(e.target.value)}
                 className="cyber-input-field"
@@ -92,15 +94,15 @@ export const MissionModal: React.FC<MissionModalProps> = ({
             </div>
 
             <div className="form-group-cyber">
-              <label className="cyber-label">Loại trang</label>
+              <label className="cyber-label">{t.modal.typeLabel}</label>
               <select
                 value={targetType}
                 onChange={(e) => setTargetType(e.target.value as TargetType)}
                 className="cyber-select-field"
               >
-                <option value="page">Fanpage</option>
-                <option value="group">Facebook Group</option>
-                <option value="profile">Profile Cá Nhân</option>
+                <option value="page">{t.dashboard.fanpage}</option>
+                <option value="group">{t.dashboard.group}</option>
+                <option value="profile">{t.dashboard.profile}</option>
                 <option value="reel">Viral Reel</option>
               </select>
             </div>
@@ -108,8 +110,8 @@ export const MissionModal: React.FC<MissionModalProps> = ({
 
           <div className="range-control-group">
             <div className="range-header">
-              <span className="cyber-label">Số lượng bài cần quét:</span>
-              <span className="range-badge">{maxPosts} bài</span>
+              <span className="cyber-label">{t.modal.limitLabel}</span>
+              <span className="range-badge">{maxPosts} {t.modal.postsUnit}</span>
             </div>
             <input
               type="range"
@@ -130,7 +132,7 @@ export const MissionModal: React.FC<MissionModalProps> = ({
                 onChange={(e) => setIncludeComments(e.target.checked)}
               />
               <div className="toggle-content">
-                <span className="toggle-text-main">Cào Bình luận & Reactions</span>
+                <span className="toggle-text-main">{t.modal.toggleComments}</span>
               </div>
             </label>
 
@@ -141,18 +143,18 @@ export const MissionModal: React.FC<MissionModalProps> = ({
                 onChange={(e) => setExtractMedia(e.target.checked)}
               />
               <div className="toggle-content">
-                <span className="toggle-text-main">Trích xuất Hình ảnh / Media</span>
+                <span className="toggle-text-main">{t.modal.toggleMedia}</span>
               </div>
             </label>
           </div>
 
           <div className="modal-cyber-footer">
             <button type="button" className="btn-ghost-cancel" onClick={onClose}>
-              Hủy bỏ
+              {t.modal.btnCancel}
             </button>
             <button type="submit" className="btn-dispatch-submit">
               <Send size={15} />
-              <span>Kích hoạt ngay</span>
+              <span>{t.modal.btnSubmit}</span>
             </button>
           </div>
         </form>

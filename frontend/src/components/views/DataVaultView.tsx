@@ -8,12 +8,14 @@ import {
   Server, 
   Sparkles
 } from 'lucide-react';
+import { useApp } from '../../context/AppContext';
 
 interface DataVaultViewProps {
   onNavigateToStudio: () => void;
 }
 
 export const DataVaultView: React.FC<DataVaultViewProps> = ({ onNavigateToStudio }) => {
+  const { t } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState('all');
 
@@ -22,23 +24,23 @@ export const DataVaultView: React.FC<DataVaultViewProps> = ({ onNavigateToStudio
       {/* Top Header & Export Action */}
       <div className="view-header-strip">
         <div>
-          <h2 className="view-title">Kho Dữ liệu Bài viết & Media (Data Vault)</h2>
-          <p className="view-subtitle">Kho chứa dữ liệu thô và cấu trúc đã được trích xuất từ các trang Facebook mục tiêu</p>
+          <h2 className="view-title">{t.vault.title}</h2>
+          <p className="view-subtitle">{t.vault.subtitle}</p>
         </div>
 
         {/* Export Toolbar */}
         <div className="vault-actions-row">
           <button type="button" className="btn-export-ghost" disabled>
             <FileCode size={14} />
-            <span>Xuất JSON</span>
+            <span>{t.vault.btnExportJson}</span>
           </button>
           <button type="button" className="btn-export-ghost" disabled>
             <FileSpreadsheet size={14} />
-            <span>Xuất Excel/CSV</span>
+            <span>{t.vault.btnExportExcel}</span>
           </button>
           <button type="button" className="btn-export-solid" disabled>
             <Server size={14} />
-            <span>Đồng bộ .NET EF Database</span>
+            <span>{t.vault.btnSyncEf}</span>
           </button>
         </div>
       </div>
@@ -46,24 +48,24 @@ export const DataVaultView: React.FC<DataVaultViewProps> = ({ onNavigateToStudio
       {/* Vault Telemetry Metrics */}
       <div className="vault-metrics-grid">
         <div className="vault-metric-tile">
-          <span className="v-tile-label">Tổng bài viết (Posts)</span>
+          <span className="v-tile-label">{t.vault.tilePosts}</span>
           <span className="v-tile-val">0</span>
-          <span className="v-tile-sub">Chưa có record</span>
+          <span className="v-tile-sub">{t.vault.tileNoRecord}</span>
         </div>
         <div className="vault-metric-tile">
-          <span className="v-tile-label">Bình luận bóc tách</span>
+          <span className="v-tile-label">{t.vault.tileComments}</span>
           <span className="v-tile-val">0</span>
-          <span className="v-tile-sub">0 tác giả thảo luận</span>
+          <span className="v-tile-sub">{t.vault.tileZeroAuthors}</span>
         </div>
         <div className="vault-metric-tile">
-          <span className="v-tile-label">Hình ảnh & Media</span>
+          <span className="v-tile-label">{t.vault.tileMedia}</span>
           <span className="v-tile-val">0</span>
-          <span className="v-tile-sub">0 MB dung lượng</span>
+          <span className="v-tile-sub">{t.vault.tileZeroMb}</span>
         </div>
         <div className="vault-metric-tile">
-          <span className="v-tile-label">Bản quyền & Metadata</span>
+          <span className="v-tile-label">{t.vault.tileMetadata}</span>
           <span className="v-tile-val">0</span>
-          <span className="v-tile-sub">Đồng bộ tự động</span>
+          <span className="v-tile-sub">{t.vault.tileAutoSync}</span>
         </div>
       </div>
 
@@ -74,7 +76,7 @@ export const DataVaultView: React.FC<DataVaultViewProps> = ({ onNavigateToStudio
             <Search size={15} className="search-icon" />
             <input
               type="text"
-              placeholder="Tìm kiếm nội dung bài viết, tác giả, hashtag..."
+              placeholder={t.vault.searchPlaceholder}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="search-input-cyber"
@@ -87,15 +89,15 @@ export const DataVaultView: React.FC<DataVaultViewProps> = ({ onNavigateToStudio
               onChange={(e) => setFilterType(e.target.value)}
               className="vault-select"
             >
-              <option value="all">Tất cả nguồn bài</option>
-              <option value="page">Chỉ Fanpage</option>
-              <option value="group">Chỉ Group</option>
-              <option value="reel">Chỉ Reels</option>
+              <option value="all">{t.vault.filterAllSources}</option>
+              <option value="page">{t.vault.filterPagesOnly}</option>
+              <option value="group">{t.vault.filterGroupsOnly}</option>
+              <option value="reel">{t.vault.filterReelsOnly}</option>
             </select>
 
             <button type="button" className="btn-filter-icon">
               <Filter size={15} />
-              <span>Bộ lọc nâng cao</span>
+              <span>{t.vault.btnAdvancedFilter}</span>
             </button>
           </div>
         </div>
@@ -108,11 +110,8 @@ export const DataVaultView: React.FC<DataVaultViewProps> = ({ onNavigateToStudio
             <Database size={32} className="radar-icon-center text-cyan" />
           </div>
 
-          <h4 className="empty-heading">Kho lưu trữ chưa có bài viết nào (0 Records)</h4>
-          <p className="empty-sub">
-            Sau khi các tác vụ trong Hàng đợi chạy và trích xuất thành công nội dung Facebook,
-            toàn bộ bài đăng, lượt like/share/comment, hình ảnh và metadata thời gian sẽ tự động xuất hiện tại đây.
-          </p>
+          <h4 className="empty-heading">{t.vault.emptyHeading}</h4>
+          <p className="empty-sub">{t.vault.emptySub}</p>
 
           <button 
             type="button" 
@@ -120,7 +119,7 @@ export const DataVaultView: React.FC<DataVaultViewProps> = ({ onNavigateToStudio
             onClick={onNavigateToStudio}
           >
             <Sparkles size={15} />
-            <span>Kích hoạt cào bài viết đầu tiên</span>
+            <span>{t.vault.btnActivateFirst}</span>
           </button>
         </div>
       </div>
