@@ -1,122 +1,148 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import { useState } from 'react';
+import { Sidebar } from './components/Sidebar';
+import { Header } from './components/Header';
+import { MetricsOverview } from './components/MetricsOverview';
+import { CrawlQuickBar } from './components/CrawlQuickBar';
+import { TaskQueueSection } from './components/TaskQueueSection';
+import { CrawlerEnginePanel } from './components/CrawlerEnginePanel';
+import { NewTaskModal } from './components/NewTaskModal';
+import type { CrawlTask, EngineStats, TargetType } from './types';
+import './App.css';
 
-function App() {
-  const [count, setCount] = useState(0)
+export function App() {
+  const [currentTab, setCurrentTab] = useState<string>('tasks-queue');
+  const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+
+  // Initial zero-state (NO sample data, as specifically requested by user)
+  const [tasks, setTasks] = useState<CrawlTask[]>([]);
+  
+  const [stats, setStats] = useState<EngineStats>({
+    totalTargets: 0,
+    totalPostsCrawled: 0,
+    pendingQueue: 0,
+    runningCrawlers: 0,
+    proxyPoolCount: 0,
+    engineStatus: 'idle'
+  });
+
+  const [logs, setLogs] = useState<string[]>([
+    '[15:35:00] SammiCrawl Engine v1.0.0 initialized.',
+    '[15:35:01] ASP.NET Core 10 Web API Bridge connected: http://localhost:7142',
+    '[15:35:02] Anti-detection fingerprint initialized (Chromium Stealth).',
+    '[15:35:03] Task queue listener active. Ready for Facebook URLs.'
+  ]);
+
+  const addLog = (message: string) => {
+    const timestamp = new Date().toLocaleTimeString();
+    setLogs(prev => [...prev.slice(-49), `[${timestamp}] ${message}`]);
+  };
+
+  const handleQuickAdd = (
+    url: string, 
+    targetType: TargetType, 
+    maxPosts: number, 
+    includeComments: boolean
+  ) => {
+    const targetName = url.replace(/https?:\/\/(www\.)?facebook\.com\/?/, '').split('/')[0] || 'Mục tiêu mới';
+    
+    const newTask: CrawlTask = {
+      id: `task_${Date.now()}`,
+      url,
+      targetName,
+      targetType,
+      status: 'running',
+      maxPosts,
+      crawledPosts: 0,
+      includeComments,
+      createdAt: 'Vừa xong',
+      progress: 5
+    };
+
+    setTasks(prev => [newTask, ...prev]);
+    setStats(prev => ({
+      ...prev,
+      totalTargets: prev.totalTargets + 1,
+      pendingQueue: prev.pendingQueue + 1,
+      runningCrawlers: Math.min(prev.runningCrawlers + 1, 4)
+    }));
+
+    addLog(`Đã tiếp nhận mục tiêu: ${targetName} (${url}). Khởi động Chromium Worker.`);
+  };
+
+  const handleModalAdd = (
+    taskData: Omit<CrawlTask, 'id' | 'status' | 'crawledPosts' | 'createdAt' | 'progress'>
+  ) => {
+    const newTask: CrawlTask = {
+      ...taskData,
+      id: `task_${Date.now()}`,
+      status: 'pending',
+      crawledPosts: 0,
+      createdAt: 'Vừa xong',
+      progress: 0
+    };
+
+    setTasks(prev => [newTask, ...prev]);
+    setStats(prev => ({
+      ...prev,
+      totalTargets: prev.totalTargets + 1,
+      pendingQueue: prev.pendingQueue + 1
+    }));
+
+    addLog(`Tạo chiến dịch mới từ Modal: ${taskData.targetName}. Xếp hàng đợi.`);
+  };
+
+  const handleDeleteTask = (id: string) => {
+    setTasks(prev => prev.filter(t => t.id !== id));
+    addLog(`Đã xóa tác vụ ID: ${id}.`);
+  };
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+    <div className="app-layout">
+      {/* Sidebar matching user's design */}
+      <Sidebar 
+        currentTab={currentTab} 
+        onTabChange={setCurrentTab} 
+      />
 
-      <div className="ticks"></div>
+      {/* Main Content Area */}
+      <div className="main-content-wrapper">
+        <Header 
+          currentTab={currentTab} 
+          onOpenNewTask={() => setIsModalOpen(true)} 
+        />
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+        <main className="dashboard-main">
+          {/* Quick Stats Metric Cards */}
+          <MetricsOverview stats={stats} />
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+          {/* Instant Crawl Bar */}
+          <CrawlQuickBar onQuickAdd={handleQuickAdd} />
+
+          {/* Grid Layout: Tasks Queue (Main) & Crawler Engine Logs/Status (Side) */}
+          <div className="dashboard-content-grid">
+            <div className="main-grid-column">
+              <TaskQueueSection 
+                tasks={tasks}
+                onOpenNewTask={() => setIsModalOpen(true)}
+                onDeleteTask={handleDeleteTask}
+              />
+            </div>
+
+            <div className="side-grid-column">
+              <CrawlerEnginePanel logs={logs} />
+            </div>
+          </div>
+        </main>
+      </div>
+
+      {/* Modal for detailed task setup */}
+      <NewTaskModal 
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onAddTask={handleModalAdd}
+      />
+    </div>
+  );
 }
 
-export default App
+export default App;
