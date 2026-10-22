@@ -1,0 +1,27 @@
+# Node / Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/*.local
+
+# .NET / Backend
+**/[Bb]in/
+**/[Oo]bj/
+backend/bin/
+backend/obj/
+backend/publish/
+*.user
+*.userosscache
+*.suo
+
+# Visual Studio & VS Code
+.vs/
+.vscode/
+.idea/
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
