@@ -40,7 +40,11 @@ export const NewTaskModal: React.FC<NewTaskModalProps> = ({
       targetName: computedName,
       targetType,
       maxPosts,
-      includeComments
+      includeComments,
+      extractMedia: true,
+      workerNode: 'Worker-Alpha',
+      ipAddress: '127.0.0.1',
+      latencyMs: 20
     });
 
     setUrl('');

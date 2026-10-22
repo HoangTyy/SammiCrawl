@@ -1,50 +1,46 @@
 import { useState } from 'react';
-import { Sidebar } from './components/Sidebar';
-import { Header } from './components/Header';
-import { MetricsOverview } from './components/MetricsOverview';
-import { CrawlQuickBar } from './components/CrawlQuickBar';
-import { TaskQueueSection } from './components/TaskQueueSection';
-import { CrawlerEnginePanel } from './components/CrawlerEnginePanel';
-import { NewTaskModal } from './components/NewTaskModal';
-import type { CrawlTask, EngineStats, TargetType } from './types';
+import { Navbar } from './components/Navbar';
+import { DashboardView } from './components/views/DashboardView';
+import { CrawlerStudioView } from './components/views/CrawlerStudioView';
+import { TaskQueueView } from './components/views/TaskQueueView';
+import { DataVaultView } from './components/views/DataVaultView';
+import { AiRewriterView } from './components/views/AiRewriterView';
+import { ProxySettingsView } from './components/views/ProxySettingsView';
+import { MissionModal } from './components/MissionModal';
+import type { NavigationTab, CrawlTask, EngineTelemetry, TargetType } from './types';
 import './App.css';
 
 export function App() {
-  const [currentTab, setCurrentTab] = useState<string>('tasks-queue');
-  const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+  const [currentTab, setCurrentTab] = useState<NavigationTab>('dashboard');
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // Initial zero-state (NO sample data, as specifically requested by user)
+  // Initial Zero-Data state (NO sample/mock records)
   const [tasks, setTasks] = useState<CrawlTask[]>([]);
-  
-  const [stats, setStats] = useState<EngineStats>({
-    totalTargets: 0,
-    totalPostsCrawled: 0,
-    pendingQueue: 0,
-    runningCrawlers: 0,
-    proxyPoolCount: 0,
-    engineStatus: 'idle'
+
+  const [telemetry, setTelemetry] = useState<EngineTelemetry>({
+    activeTargets: 0,
+    postsCaptured: 0,
+    queueDepth: 0,
+    systemHealth: 100,
+    apiLatencyMs: 14,
+    proxyPoolReady: 0,
+    workerNodesOnline: 4
   });
 
   const [logs, setLogs] = useState<string[]>([
-    '[15:35:00] SammiCrawl Engine v1.0.0 initialized.',
-    '[15:35:01] ASP.NET Core 10 Web API Bridge connected: http://localhost:7142',
-    '[15:35:02] Anti-detection fingerprint initialized (Chromium Stealth).',
-    '[15:35:03] Task queue listener active. Ready for Facebook URLs.'
+    '[15:45:00] SammiCrawl Cyber Core v1.0 online.',
+    '[15:45:01] ASP.NET Core 10 Web API listener ready at :7142.',
+    '[15:45:02] Chromium stealth profile loaded (Fingerprint randomized).',
+    '[15:45:03] Ready to ingest Facebook URLs. 0 jobs in queue.'
   ]);
 
-  const addLog = (message: string) => {
-    const timestamp = new Date().toLocaleTimeString();
-    setLogs(prev => [...prev.slice(-49), `[${timestamp}] ${message}`]);
+  const addLog = (msg: string) => {
+    const time = new Date().toLocaleTimeString();
+    setLogs(prev => [...prev.slice(-49), `[${time}] ${msg}`]);
   };
 
-  const handleQuickAdd = (
-    url: string, 
-    targetType: TargetType, 
-    maxPosts: number, 
-    includeComments: boolean
-  ) => {
-    const targetName = url.replace(/https?:\/\/(www\.)?facebook\.com\/?/, '').split('/')[0] || 'Mục tiêu mới';
-    
+  const handleLaunchTarget = (url: string, targetType: TargetType, maxPosts: number) => {
+    const targetName = url.replace(/https?:\/\/(www\.)?facebook\.com\/?/, '').split('/')[0] || 'FB Target';
     const newTask: CrawlTask = {
       id: `task_${Date.now()}`,
       url,
@@ -53,93 +49,111 @@ export function App() {
       status: 'running',
       maxPosts,
       crawledPosts: 0,
-      includeComments,
-      createdAt: 'Vừa xong',
-      progress: 5
+      includeComments: true,
+      extractMedia: true,
+      createdAt: 'Vừa kích hoạt',
+      progress: 10,
+      workerNode: 'Worker-Alpha',
+      ipAddress: '127.0.0.1 (Direct)',
+      latencyMs: 18
     };
 
     setTasks(prev => [newTask, ...prev]);
-    setStats(prev => ({
+    setTelemetry(prev => ({
       ...prev,
-      totalTargets: prev.totalTargets + 1,
-      pendingQueue: prev.pendingQueue + 1,
-      runningCrawlers: Math.min(prev.runningCrawlers + 1, 4)
+      activeTargets: prev.activeTargets + 1,
+      queueDepth: prev.queueDepth + 1
     }));
 
-    addLog(`Đã tiếp nhận mục tiêu: ${targetName} (${url}). Khởi động Chromium Worker.`);
+    addLog(`Đã khởi chạy: ${targetName} (${url}). Điều phối tới Worker-Alpha.`);
   };
 
-  const handleModalAdd = (
-    taskData: Omit<CrawlTask, 'id' | 'status' | 'crawledPosts' | 'createdAt' | 'progress'>
+  const handleDeployFull = (
+    taskData: Omit<CrawlTask, 'id' | 'status' | 'crawledPosts' | 'createdAt' | 'progress' | 'workerNode' | 'ipAddress' | 'latencyMs'>
   ) => {
     const newTask: CrawlTask = {
       ...taskData,
       id: `task_${Date.now()}`,
       status: 'pending',
       crawledPosts: 0,
-      createdAt: 'Vừa xong',
-      progress: 0
+      createdAt: 'Vừa lên lịch',
+      progress: 0,
+      workerNode: 'Worker-Beta',
+      ipAddress: '127.0.0.1 (Direct)',
+      latencyMs: 22
     };
 
     setTasks(prev => [newTask, ...prev]);
-    setStats(prev => ({
+    setTelemetry(prev => ({
       ...prev,
-      totalTargets: prev.totalTargets + 1,
-      pendingQueue: prev.pendingQueue + 1
+      activeTargets: prev.activeTargets + 1,
+      queueDepth: prev.queueDepth + 1
     }));
 
-    addLog(`Tạo chiến dịch mới từ Modal: ${taskData.targetName}. Xếp hàng đợi.`);
+    addLog(`Lên lịch chiến dịch: ${taskData.targetName}. Xếp vào hàng đợi.`);
   };
 
   const handleDeleteTask = (id: string) => {
     setTasks(prev => prev.filter(t => t.id !== id));
-    addLog(`Đã xóa tác vụ ID: ${id}.`);
+    setTelemetry(prev => ({
+      ...prev,
+      activeTargets: Math.max(0, prev.activeTargets - 1),
+      queueDepth: Math.max(0, prev.queueDepth - 1)
+    }));
+    addLog(`Hủy tác vụ ID: ${id}. Giải phóng tài nguyên.`);
   };
 
   return (
-    <div className="app-layout">
-      {/* Sidebar matching user's design */}
-      <Sidebar 
-        currentTab={currentTab} 
-        onTabChange={setCurrentTab} 
+    <div className="cyber-app-shell">
+      {/* Top Cyber Command Bar */}
+      <Navbar
+        currentTab={currentTab}
+        onSelectTab={setCurrentTab}
+        telemetry={telemetry}
+        onOpenMissionModal={() => setIsModalOpen(true)}
       />
 
-      {/* Main Content Area */}
-      <div className="main-content-wrapper">
-        <Header 
-          currentTab={currentTab} 
-          onOpenNewTask={() => setIsModalOpen(true)} 
-        />
+      {/* Dynamic View Content Area */}
+      <main className="cyber-main-canvas">
+        {currentTab === 'dashboard' && (
+          <DashboardView
+            telemetry={telemetry}
+            logs={logs}
+            onLaunchTarget={handleLaunchTarget}
+            onNavigateToStudio={() => setCurrentTab('crawler-studio')}
+          />
+        )}
 
-        <main className="dashboard-main">
-          {/* Quick Stats Metric Cards */}
-          <MetricsOverview stats={stats} />
+        {currentTab === 'crawler-studio' && (
+          <CrawlerStudioView onDeployMission={handleDeployFull} />
+        )}
 
-          {/* Instant Crawl Bar */}
-          <CrawlQuickBar onQuickAdd={handleQuickAdd} />
+        {currentTab === 'queue' && (
+          <TaskQueueView
+            tasks={tasks}
+            onDeleteTask={handleDeleteTask}
+            onNavigateToStudio={() => setCurrentTab('crawler-studio')}
+          />
+        )}
 
-          {/* Grid Layout: Tasks Queue (Main) & Crawler Engine Logs/Status (Side) */}
-          <div className="dashboard-content-grid">
-            <div className="main-grid-column">
-              <TaskQueueSection 
-                tasks={tasks}
-                onOpenNewTask={() => setIsModalOpen(true)}
-                onDeleteTask={handleDeleteTask}
-              />
-            </div>
+        {currentTab === 'data-vault' && (
+          <DataVaultView onNavigateToStudio={() => setCurrentTab('crawler-studio')} />
+        )}
 
-            <div className="side-grid-column">
-              <CrawlerEnginePanel logs={logs} />
-            </div>
-          </div>
-        </main>
-      </div>
+        {currentTab === 'ai-rewriter' && (
+          <AiRewriterView />
+        )}
 
-      {/* Modal for detailed task setup */}
-      <NewTaskModal 
+        {currentTab === 'proxy-stealth' && (
+          <ProxySettingsView />
+        )}
+      </main>
+
+      {/* Global Mission Modal */}
+      <MissionModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        onAddTask={handleModalAdd}
+        onDeploy={handleDeployFull}
       />
     </div>
   );

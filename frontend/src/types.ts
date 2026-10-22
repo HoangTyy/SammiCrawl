@@ -1,5 +1,6 @@
-export type TargetType = 'page' | 'group' | 'profile';
-export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed';
+export type TargetType = 'page' | 'group' | 'profile' | 'reel' | 'post';
+export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'paused';
+export type NavigationTab = 'dashboard' | 'crawler-studio' | 'queue' | 'data-vault' | 'ai-rewriter' | 'proxy-stealth';
 
 export interface CrawlTask {
   id: string;
@@ -10,9 +11,22 @@ export interface CrawlTask {
   maxPosts: number;
   crawledPosts: number;
   includeComments: boolean;
+  extractMedia: boolean;
   createdAt: string;
-  progress: number; // 0 - 100
-  errorMessage?: string;
+  progress: number;
+  workerNode: string;
+  ipAddress: string;
+  latencyMs: number;
+}
+
+export interface EngineTelemetry {
+  activeTargets: number;
+  postsCaptured: number;
+  queueDepth: number;
+  systemHealth: number; // percentage, e.g. 100
+  apiLatencyMs: number;
+  proxyPoolReady: number;
+  workerNodesOnline: number;
 }
 
 export interface EngineStats {
