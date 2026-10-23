@@ -18,7 +18,7 @@ public interface IAuthService
 
 public sealed class AuthService(IProjectRepository db) : IAuthService
 {
-    public async Task<ServiceResult> Status(HttpContext ctx) { return ServiceResult.Ok(new { setupRequired = !ctx.Items.ContainsKey("LocalMode") && !await db.HasUsersAsync(), authenticated = ctx.User.Identity?.IsAuthenticated == true, localMode = ctx.Items.ContainsKey("LocalMode") }); }
+    public async Task<ServiceResult> Status(HttpContext ctx) { return ServiceResult.Ok(new { setupRequired = !await db.HasUsersAsync(), authenticated = ctx.User.Identity?.IsAuthenticated == true, localMode = false }); }
 
     public async Task<ServiceResult> Setup(Credentials r, HttpContext ctx)
     {

@@ -29,15 +29,6 @@ public static class RequestPipelineExtensions
         {
             if (ctx.Items.ContainsKey("RemoteAi"))
                 ctx.User = new ClaimsPrincipal(new ClaimsIdentity(new[] { new Claim(ClaimTypes.Name, "RemoteBackend") }, "RemoteAiKey"));
-            else if (app.Configuration.GetValue<bool>("LocalDevelopment:SkipLogin")
-                && (ctx.Request.Host.Host is "localhost" or "127.0.0.1" or "::1")
-                && !ctx.Request.Headers.ContainsKey("CF-Connecting-IP")
-                && !ctx.Request.Headers.ContainsKey("Forwarded")
-                && !ctx.Request.Headers.ContainsKey("X-Forwarded-For"))
-            {
-                ctx.Items["LocalMode"] = true;
-                ctx.User = new ClaimsPrincipal(new ClaimsIdentity(new[] { new Claim(ClaimTypes.Name, "LocalDeveloper") }, "LocalDevelopment"));
-            }
             await next();
         });
         app.Use(async (ctx, next) =>

@@ -28,5 +28,3 @@ Thumbs.db
 
 .env
 work/
-
-backend/appsettings.Local.json

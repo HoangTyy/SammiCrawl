@@ -1,42 +1,39 @@
-# SammiCrawl local
+# SammiCrawl
 
-React + ASP.NET Core 10 + PostgreSQL. Docker app mở tại http://localhost:5080.
+React + ASP.NET Core 10 + PostgreSQL. Mã nguồn local và GitHub dùng cùng cấu hình, cùng màn hình đăng nhập, cùng database.
 
-## Chạy bằng Docker
+## Chạy
 
-1. Copy `.env.example` thành `.env`, điền connection string PostgreSQL và hai khóa API ngẫu nhiên.
-2. Chạy `docker compose up -d --build`.
-3. Mặc định localhost bỏ qua login theo yêu cầu phát triển. Muốn kiểm tra đăng nhập, thêm `SKIP_LOGIN=false` vào `.env` rồi chạy `docker compose up -d app`.
+```powershell
+docker compose up -d --build
+```
 
-`.env`, `backend/appsettings.Local.json` và thư mục `work/` không được commit hoặc copy vào image Docker. Không chạy `docker compose down -v` nếu cần giữ khóa giải mã cookie và media.
+Mở http://localhost:5080 và đăng nhập. Không có chế độ tự bỏ qua đăng nhập, không có appsettings.Local.json hoặc connection string riêng cho máy phát triển.
 
-## Connection string và chạy trong IDE
+`backend/appsettings.json` chứa connection string PostgreSQL đầy đủ. Docker và chạy backend bằng .NET 10 SDK đều đọc cấu hình này. Khi đổi mật khẩu DB, cập nhật file rồi build/triển khai lại. Theo cơ chế chuẩn ASP.NET Core, bên triển khai vẫn có thể ghi đè cấu hình bằng biến môi trường nếu cần; compose mặc định không ghi đè connection string.
 
-`backend/appsettings.json` chứa provider, host, port, database, username và mẫu connection string. Mật khẩu thật được ghi đè bằng một trong hai cách:
+TLS dùng VerifyCA, chứng chỉ duy nhất ở `backend/config/postgres/server.crt`, được copy khi publish và dùng chung trong Docker. Khi nhà cung cấp thay chứng chỉ, xác minh trước khi cập nhật. PostgreSQL schema `sammicrawl`; SQL Server cũ giữ volume và chỉ chạy với profile `legacy-sql`.
 
-- Docker: `POSTGRES_CONNECTION` trong `.env` được truyền vào `ConnectionStrings__Database`.
-- IDE: tạo `backend/appsettings.Local.json` với cấu trúc `ConnectionStrings:Database` giống appsettings.json, điền mật khẩu thật. File này bị Git và Docker bỏ qua. Máy phát triển hiện tại đã có file local này.
-
-Cấu hình được đọc theo thứ tự appsettings mặc định → appsettings.Local.json → biến môi trường. Khi đổi mật khẩu DB, cập nhật cả `.env` và file local nếu sử dụng hai cách chạy.
-
-TLS dùng VerifyCA với chứng chỉ ghim `config/postgres/server.crt` (Docker) hoặc `backend/config/postgres/server.crt` (IDE). Khi nhà cung cấp đổi chứng chỉ, xác minh và cập nhật cả hai bản. Bản build/publish backend có copy chứng chỉ. SQL Server cũ nằm trong profile `legacy-sql`, volume còn giữ để khôi phục; web mặc định dùng PostgreSQL schema `sammicrawl`.
+`.env` chỉ dùng cho khóa API worker/bridge và mật khẩu SQL Server cũ. Có thể copy `.env.example` để cấu hình các tính năng này. Không có khóa thì web vẫn chạy; bridge và worker không chấp nhận request xác thực bằng khóa trống. Không chạy `docker compose down -v` nếu cần giữ khóa giải mã cookie và media.
 
 ## Tài khoản mẫu
 
-Tạo thủ công một lần trên database đang cấu hình:
+Đã tạo trên database hiện tại:
+
+- Email: `demo@sammicrawl.local`
+- Mật khẩu mẫu: `SammiDemo@2026`
+
+Nếu sử dụng database mới, tạo một lần sau khi cấu hình connection:
 
 ```powershell
 docker compose run --rm --no-deps app --seed-demo
 ```
 
-Hoặc trong backend bằng .NET 10 SDK: `dotnet run -- --seed-demo`.
+Hoặc tại thư mục backend bằng .NET 10 SDK: `dotnet run -- --seed-demo`.
 
-- Email: `demo@sammicrawl.local`
-- Mật khẩu mẫu: `SammiDemo@2026`
+Đây là tài khoản thử công khai. Lệnh seed không tự chạy khi khởi động và không reset tài khoản đã tồn tại. Cần xóa hoặc đổi tài khoản mẫu trước khi mở public.
 
-Đây là tài khoản thử công khai; chỉ tạo trong môi trường thử nghiệm. Lệnh không tự chạy khi khởi động và không reset tài khoản đã tồn tại. Có thể ghi đè `DemoAccount:Email`/`DemoAccount:Password` trong cấu hình local hoặc biến môi trường trước khi seed. Cần xóa hoặc đổi tài khoản mẫu trước khi mở public. Không chỉnh sửa tài khoản có sẵn của người dùng khi seed.
-
-Không có đăng ký công khai. `/api/auth/setup` chỉ tạo quản trị viên đầu tiên khi DB chưa có user; sau đó trả HTTP 409. `/api/auth/login` và `/api/auth/logout` dùng cookie HttpOnly. Bỏ qua login chỉ áp dụng localhost không có header proxy; `appsettings.json` mặc định tắt bypass ngoài cấu hình Docker local.
+Không có đăng ký công khai. `/api/auth/setup` chỉ tạo quản trị viên đầu tiên khi DB chưa có user; sau đó trả HTTP 409. `/api/auth/login` và `/api/auth/logout` dùng cookie HttpOnly. Localhost cũng bắt buộc đăng nhập như các bản triển khai khác.
 
 ## Kiến trúc backend
 
@@ -46,7 +43,7 @@ Không có đăng ký công khai. `/api/auth/setup` chỉ tạo quản trị vi�
 - `Data/Store.cs`: mapping EF Core.
 - `Models/`: Document, ProjectUser, Audit và loại bản ghi.
 - `Contracts/`: request DTO và kết quả nghiệp vụ.
-- `Infrastructure/`: middleware xác thực local/bridge/worker, xử lý lỗi và công cụ chuyển dữ liệu SQL Server → PostgreSQL.
+- `Infrastructure/`: middleware xác thực bridge/worker, xử lý lỗi và công cụ chuyển dữ liệu SQL Server → PostgreSQL.
 - `Program.cs`: cấu hình, đăng ký DI và khởi động; không chứa nghiệp vụ API.
 
 URL API giữ nguyên để frontend tiếp tục sử dụng. Bí mật Facebook được mã hóa bằng Data Protection, không trả cookie đã lưu về browser. Giữ volume `sammicrawl_keys` khi chuyển host để giải mã phiên cũ.
@@ -67,4 +64,4 @@ Worker cào Facebook, tải/kiểm chứng media, Clef lọc nền và đăng Fa
 
 ## Sao lưu và chuyển dữ liệu
 
-Bản SQL Server, `.env` và khóa giải mã trước chuyển đổi nằm trong `work/db-migration/` trên máy phát triển. Công cụ `--migrate-postgres` chỉ cho DB đích trống, so sánh hash sau chuẩn hóa UTC/microsecond rồi mới commit. Không đưa bản sao lưu hoặc mật khẩu lên GitHub.
+Bản SQL Server, `.env` và khóa giải mã trước chuyển đổi nằm trong `work/db-migration/` trên máy phát triển. Công cụ `--migrate-postgres` chỉ cho DB đích trống, so sánh hash sau chuẩn hóa UTC/microsecond rồi mới commit. Bản sao lưu và khóa worker/bridge không đưa lên GitHub. Connection string PostgreSQL được lưu chung trong appsettings.json theo cấu hình dự án; khi reset mật khẩu DB cần sửa file này và triển khai lại.
