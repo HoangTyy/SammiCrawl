@@ -3,7 +3,6 @@ import {
   Sparkles, 
   LayoutDashboard, 
   FileText, 
-  Wand2, 
   GitFork, 
   ThumbsUp, 
   ListOrdered, 
@@ -30,7 +29,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onTabChange }) => 
       title: 'CONTENT',
       items: [
         { id: 'articles', label: 'Articles', icon: FileText },
-        { id: 'ai-rewriter', label: 'AI Rewriter', icon: Wand2 },
         { id: 'pipeline', label: 'Pipeline', icon: GitFork }
       ]
     },

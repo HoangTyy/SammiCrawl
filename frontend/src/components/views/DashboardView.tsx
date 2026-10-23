@@ -29,13 +29,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 }) => {
   const { t } = useApp();
   const [quickUrl, setQuickUrl] = useState('');
-  const [selectedType, setSelectedType] = useState<TargetType>('page');
+
   const [copied, setCopied] = useState(false);
 
   const handleQuickSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!quickUrl.trim()) return;
-    onLaunchTarget(quickUrl, selectedType, 25);
+    onLaunchTarget(quickUrl, 'page', 25);
     setQuickUrl('');
   };
 
@@ -151,19 +151,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </button>
               </div>
 
-              <div className="dispatch-chips-row">
-                <span className="chips-title">{t.dashboard.targetType}</span>
-                {(['page', 'group', 'profile'] as TargetType[]).map(type => (
-                  <button
-                    key={type}
-                    type="button"
-                    className={`chip-btn ${selectedType === type ? 'active' : ''}`}
-                    onClick={() => setSelectedType(type)}
-                  >
-                    {type === 'page' ? t.dashboard.fanpage : type === 'group' ? t.dashboard.group : t.dashboard.profile}
-                  </button>
-                ))}
-              </div>
             </form>
           </div>
 
@@ -179,10 +166,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
             <div className="nodes-grid">
               {[
-                { name: 'Worker-Alpha', engine: 'Chromium Stealth', status: t.dashboard.idle, load: '0%' },
-                { name: 'Worker-Beta', engine: 'Chromium Stealth', status: t.dashboard.idle, load: '0%' },
-                { name: 'Worker-Gamma', engine: 'API Scraper', status: t.dashboard.idle, load: '0%' },
-                { name: 'Worker-Delta', engine: 'Media Extractor', status: t.dashboard.idle, load: '0%' }
+                { name: 'Worker-Alpha', engine: 'Thu thập Facebook', status: 'Chưa triển khai', load: '0%' },
+                { name: 'Worker-Beta', engine: 'Thu thập Facebook', status: 'Chưa triển khai', load: '0%' },
+                { name: 'Worker-Gamma', engine: 'Lọc bài bằng Clef', status: 'Chưa triển khai', load: '0%' },
+                { name: 'Worker-Delta', engine: 'Tải ảnh và video', status: 'Chưa triển khai', load: '0%' }
               ].map((node, i) => (
                 <div key={i} className="node-tile">
                   <div className="node-tile-top">
@@ -234,8 +221,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
 
             <div className="terminal-footer-meta">
-              <span>{t.dashboard.bridgeConnected}</span>
-              <span>{t.dashboard.memory} 42MB</span>
+              <span>{telemetry.systemHealth > 0 ? 'API đã kết nối' : 'API chưa kết nối'}</span>
+              <span>{t.dashboard.memory} —</span>
               <span>{t.dashboard.proxyRotation} 0</span>
             </div>
           </div>

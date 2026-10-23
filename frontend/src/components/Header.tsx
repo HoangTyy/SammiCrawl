@@ -23,8 +23,6 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, onOpenNewTask }) => 
         return 'Tasks & Queue Giám sát';
       case 'articles':
         return 'Kho Bài viết Đã cào';
-      case 'ai-rewriter':
-        return 'AI Rewriter & Biên tập';
       case 'pipeline':
         return 'Pipeline Xử lý Dữ liệu';
       default:

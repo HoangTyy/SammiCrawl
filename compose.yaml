@@ -1,0 +1,39 @@
+services:
+  db:
+    profiles: ["legacy-sql"]
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: 'Y'
+      MSSQL_SA_PASSWORD: ${SQL_PASSWORD:?Set SQL_PASSWORD in .env}
+      MSSQL_MEMORY_LIMIT_MB: '2048'
+    ports:
+      - '127.0.0.1:14339:1433'
+    volumes:
+      - sammicrawl_sql:/var/opt/mssql
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD-SHELL', '/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$$MSSQL_SA_PASSWORD" -C -Q "SELECT 1" -b -o /dev/null']
+      interval: 10s
+      timeout: 5s
+      retries: 30
+  app:
+    build: .
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      LocalDevelopment__SkipLogin: true
+      DatabaseProvider: PostgreSql
+      ConnectionStrings__Database: ${POSTGRES_CONNECTION:?Set POSTGRES_CONNECTION in .env}
+      WorkerApiKey: ${WORKER_API_KEY:?Set WORKER_API_KEY in .env}
+      RemoteAiKey: ${REMOTE_AI_KEY:?Set REMOTE_AI_KEY in .env}
+      Ollama__BaseUrl: http://host.docker.internal:11434
+    ports:
+      - '127.0.0.1:5080:8080'
+    volumes:
+      - sammicrawl_keys:/root/.aspnet/DataProtection-Keys
+      - sammicrawl_media:/app/wwwroot/media
+      - ./config/postgres:/app/config/postgres:ro
+    restart: unless-stopped
+volumes:
+  sammicrawl_sql:
+  sammicrawl_keys:
+  sammicrawl_media:

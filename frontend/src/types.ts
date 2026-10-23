@@ -1,6 +1,6 @@
 export type TargetType = 'page' | 'group' | 'profile' | 'reel' | 'post';
 export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'paused';
-export type NavigationTab = 'dashboard' | 'crawler-studio' | 'queue' | 'data-vault' | 'ai-rewriter' | 'proxy-stealth';
+export type NavigationTab = 'dashboard' | 'crawler-studio' | 'queue' | 'data-vault' | 'proxy-stealth' | 'facebook-accounts';
 
 export interface CrawlTask {
   id: string;
@@ -10,6 +10,23 @@ export interface CrawlTask {
   status: TaskStatus;
   maxPosts: number;
   crawledPosts: number;
+  scrollDelay?: number;
+  maxScrolls?: number;
+  delayMinMs?: number;
+  delayMaxMs?: number;
+  minLikes?: number;
+  minComments?: number;
+  keywords?: string;
+  topicDescription?: string;
+  crawlAccountIds?: string[];
+  publishAccountId?: string;
+  brandId?: string;
+  branch?: string;
+  minAiScore?: number;
+  topPosts?: number;
+  rewriteInstructions?: string;
+  rewriteTemperature?: number;
+  requireApproval?: boolean;
   includeComments: boolean;
   extractMedia: boolean;
   createdAt: string;

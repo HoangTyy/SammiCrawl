@@ -1,128 +1,24 @@
-import React, { useState } from 'react';
-import { 
-  Database, 
-  Search, 
-  Filter, 
-  FileSpreadsheet, 
-  FileCode, 
-  Server, 
-  Sparkles
-} from 'lucide-react';
-import { useApp } from '../../context/AppContext';
-
-interface DataVaultViewProps {
-  onNavigateToStudio: () => void;
+import { useEffect, useState } from 'react';
+import { RefreshCw, Plus, X } from 'lucide-react';
+import { api } from '../../api';
+type Media={url:string;type:string;status?:string};
+type Article={id:string;brandId:string;title:string;content:string;sourceUrl:string;createdAt:string;likes?:number;comments?:number;aiStatus?:string;aiScore?:number;aiReason?:string;media?:Media[]};
+type Draft={id:string;articleId:string;brandId:string;branch:string;content:string;media:Media[];status:string};
+const safeSource=(url:string)=>{try{const u=new URL(url);return u.protocol==='https:'&&(u.hostname==='facebook.com'||u.hostname.endsWith('.facebook.com'))?url:undefined;}catch{return undefined;}};
+const localMedia=(url:string)=>/^\/media\/[a-zA-Z0-9_./%-]+$/.test(url)&&!url.includes('..')&&!url.includes('%');
+export function DataVaultView({onNavigateToStudio,initialBrandId=''}:{onNavigateToStudio:()=>void;initialBrandId?:string}){
+ const [articles,setArticles]=useState<Article[]>([]);const [brands,setBrands]=useState<{id:string;name:string;facebookGroupUrl?:string}[]>([]);const [brandId,setBrandId]=useState(initialBrandId);const [filter,setFilter]=useState('all');const [query,setQuery]=useState('');const [message,setMessage]=useState('');const [loading,setLoading]=useState(true);const [busy,setBusy]=useState(false);const [selected,setSelected]=useState<Article|null>(null);const [draft,setDraft]=useState<Draft|null>(null);const [publisher,setPublisher]=useState('');const [accounts,setAccounts]=useState<{id:string;name:string;role:string;enabled?:boolean}[]>([]);
+ const load=async()=>{const [a,b,p]=await Promise.all([api<Article[]>('/records/articles'),api<typeof brands>('/records/brands'),api<typeof accounts>('/records/accounts')]);setArticles(a);setBrands(b);setAccounts(p);};
+ useEffect(()=>{let active=true;Promise.all([api<Article[]>('/records/articles'),api<typeof brands>('/records/brands'),api<typeof accounts>('/records/accounts')]).then(([a,b,p])=>{if(active){setArticles(a);setBrands(b);setAccounts(p);setLoading(false);}}).catch(e=>{if(active){setMessage(e.message);setLoading(false);}});return()=>{active=false;};},[]);
+ const scoped=articles.filter(a=>!brandId||a.brandId===brandId);const status=(a:Article)=>a.aiStatus??'pending';
+ const tabs=[['all','Tất cả'],['recommended','AI đề xuất'],['rejected','Không phù hợp'],['pending','Chờ AI']];
+ const visible=scoped.filter(a=>(filter==='all'||status(a)===filter)&&`${a.title} ${a.content} ${a.sourceUrl}`.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
+ const prepare=async(a:Article,branch:string)=>{setSelected(a);setDraft(null);setMessage('');setBusy(true);try{setDraft(await api<Draft>(`/articles/${a.id}/draft`,{branch}));}catch(e){setMessage((e as Error).message);}finally{setBusy(false);}};
+ return <div className="view-container"><div className="view-header-strip"><div><h2 className="view-title">Danh sách bài viết</h2><p className="view-subtitle">Bài gốc theo thương hiệu · Clef lọc nền · Chọn Repost hoặc Rewrite rồi duyệt đăng vào nhóm</p></div><button className="btn-launch-cyber" onClick={onNavigateToStudio}><Plus size={15}/> Cào bài mới</button></div>
+ <div className="brand-summary-grid">{tabs.map(([id,label])=><button key={id} className={`cyber-panel article-count ${filter===id?'selected':''}`} onClick={()=>setFilter(id)}><span>{label}</span><strong>{loading?'—':scoped.filter(a=>id==='all'||status(a)===id).length}</strong></button>)}</div>
+ <div className="workspace-toolbar"><select aria-label="Lọc thương hiệu" className="cyber-select-field" value={brandId} onChange={e=>setBrandId(e.target.value)}><option value="">Tất cả thương hiệu</option>{brands.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</select><input aria-label="Tìm bài viết" className="cyber-input-field article-search" placeholder="Tìm tiêu đề, nội dung hoặc URL…" value={query} onChange={e=>setQuery(e.target.value)}/><button className="btn-preset" onClick={()=>{void load().catch(e=>setMessage(e.message));}}><RefreshCw size={15}/> Làm mới</button><span>{visible.length}/{scoped.length} bài</span></div>
+ {message&&<p role="status" className="config-notice">{message}</p>}<div className="article-table-wrap"><table className="article-table"><thead><tr><th>Bài viết / media</th><th>Thương hiệu</th><th>Thu thập / tương tác</th><th>Clef đánh giá</th><th>Thao tác</th></tr></thead><tbody>{visible.map(a=><tr key={a.id}><td><button className="article-title" onClick={()=>{setSelected(a);setDraft(null);}}>{a.title||a.content.slice(0,90)||'Bài không có tiêu đề'}</button><a href={safeSource(a.sourceUrl)} target="_blank" rel="noreferrer">Xem bài gốc</a><small>{a.media?.filter(m=>m.type==='image').length??0} ảnh · {a.media?.filter(m=>m.type==='video').length??0} video</small></td><td>{brands.find(b=>b.id===a.brandId)?.name||'Thương hiệu không còn hoạt động'}</td><td>{new Date(a.createdAt).toLocaleString('vi-VN')}<small>{a.likes??0} thích · {a.comments??0} bình luận</small></td><td>{tabs.find(([id])=>id===status(a))?.[1]??status(a)}{a.aiScore!==undefined&&<strong> · {a.aiScore}/100</strong>}<small>{a.aiReason}</small></td><td><div className="preset-buttons-row"><button disabled={busy} className="btn-preset" onClick={()=>{void prepare(a,'repost');}}>Repost</button><button disabled={busy} className="btn-launch-cyber" onClick={()=>{void prepare(a,'rewrite');}}>Rewrite</button></div></td></tr>)}</tbody></table>{loading?<p className="workspace-empty">Đang tải…</p>:!visible.length&&<div className="workspace-empty">{articles.length?'Không có bài khớp bộ lọc.':'Chưa có bài thu thập. Worker cào và Clef chưa triển khai nên chưa có dữ liệu thực.'}</div>}</div>
+ {selected&&<div className="workspace-modal-overlay"><section role="dialog" aria-modal="true" aria-label="Xem trước bài viết" className="cyber-panel workspace-editor"><header><div><h3>{draft?draft.branch==='repost'?'Duyệt bản repost':'Duyệt bản Bonsai viết lại':'Nội dung và media gốc'}</h3><p>{brands.find(b=>b.id===selected.brandId)?.name}</p></div><button className="workspace-icon-button" disabled={busy} aria-label="Đóng" onClick={()=>{setSelected(null);setDraft(null);}}><X size={20}/></button></header><div className="article-preview"><p className="cyber-hint">Nhóm đích: {brands.find(b=>b.id===selected.brandId)?.facebookGroupUrl||'Chưa cấu hình trong hồ sơ thương hiệu'}</p>{busy&&<p>Đang xử lý… Bonsai có thể cần thời gian nạp model.</p>}{draft?<label className="setting-field">Nội dung đăng<textarea rows={12} className="cyber-textarea-field" value={draft.content} onChange={e=>setDraft({...draft,content:e.target.value})}/></label>:<p className="article-content">{selected.content}</p>}
+ <div className="article-media-grid">{(draft?.media??selected.media??[]).map((m,i)=><div key={i}>{localMedia(m.url)?m.type==='video'?<video controls preload="metadata" src={m.url}/>:<img src={m.url} alt={`Ảnh gốc ${i+1}`}/>:<p>Media #{i+1} chưa có file local hợp lệ.</p>}</div>)}</div>{!(draft?.media??selected.media??[]).length&&<p className="config-notice">Chưa có ảnh/video gốc. Chưa thể duyệt đăng.</p>}
+ {message&&<p role="status">{message}</p>}{draft?<><label className="setting-field">Tài khoản đăng vào nhóm<select className="cyber-select-field" value={publisher} onChange={e=>setPublisher(e.target.value)}><option value="">Chọn tài khoản đăng</option>{accounts.filter(a=>a.role==='publish'&&a.enabled!==false).map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></label><button className="btn-launch-full" disabled={busy||!publisher||draft.status!=='awaiting_review'} onClick={async()=>{setBusy(true);try{const approved=await api<Draft>(`/drafts/${draft.id}/approve`,{content:draft.content,publishAccountId:publisher});setDraft(approved);setMessage('Đã duyệt bản nháp; worker đăng chưa triển khai, bài chưa được đăng Facebook.');}catch(e){setMessage((e as Error).message);}finally{setBusy(false);}}}>{draft.status==='awaiting_review'?'Duyệt đăng':'Đã duyệt · chờ worker'}</button></>:<div className="preset-buttons-row"><button className="btn-preset" disabled={busy} onClick={()=>{void prepare(selected,'repost');}}>Repost</button><button className="btn-launch-cyber" disabled={busy} onClick={()=>{void prepare(selected,'rewrite');}}>Rewrite bằng Bonsai</button></div>}<p className="cyber-hint">Duyệt chỉ được ghi nhận khi media gốc đủ và có nhóm đích. Worker đăng Facebook chưa triển khai.</p></div></section></div>}</div>;
 }
-
-export const DataVaultView: React.FC<DataVaultViewProps> = ({ onNavigateToStudio }) => {
-  const { t } = useApp();
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterType, setFilterType] = useState('all');
-
-  return (
-    <div className="view-container vault-view">
-      {/* Top Header & Export Action */}
-      <div className="view-header-strip">
-        <div>
-          <h2 className="view-title">{t.vault.title}</h2>
-          <p className="view-subtitle">{t.vault.subtitle}</p>
-        </div>
-
-        {/* Export Toolbar */}
-        <div className="vault-actions-row">
-          <button type="button" className="btn-export-ghost" disabled>
-            <FileCode size={14} />
-            <span>{t.vault.btnExportJson}</span>
-          </button>
-          <button type="button" className="btn-export-ghost" disabled>
-            <FileSpreadsheet size={14} />
-            <span>{t.vault.btnExportExcel}</span>
-          </button>
-          <button type="button" className="btn-export-solid" disabled>
-            <Server size={14} />
-            <span>{t.vault.btnSyncEf}</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Vault Telemetry Metrics */}
-      <div className="vault-metrics-grid">
-        <div className="vault-metric-tile">
-          <span className="v-tile-label">{t.vault.tilePosts}</span>
-          <span className="v-tile-val">0</span>
-          <span className="v-tile-sub">{t.vault.tileNoRecord}</span>
-        </div>
-        <div className="vault-metric-tile">
-          <span className="v-tile-label">{t.vault.tileComments}</span>
-          <span className="v-tile-val">0</span>
-          <span className="v-tile-sub">{t.vault.tileZeroAuthors}</span>
-        </div>
-        <div className="vault-metric-tile">
-          <span className="v-tile-label">{t.vault.tileMedia}</span>
-          <span className="v-tile-val">0</span>
-          <span className="v-tile-sub">{t.vault.tileZeroMb}</span>
-        </div>
-        <div className="vault-metric-tile">
-          <span className="v-tile-label">{t.vault.tileMetadata}</span>
-          <span className="v-tile-val">0</span>
-          <span className="v-tile-sub">{t.vault.tileAutoSync}</span>
-        </div>
-      </div>
-
-      {/* Main Filter & Empty Vault Panel */}
-      <div className="cyber-panel vault-panel">
-        <div className="vault-filter-toolbar">
-          <div className="search-box-cyber">
-            <Search size={15} className="search-icon" />
-            <input
-              type="text"
-              placeholder={t.vault.searchPlaceholder}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="search-input-cyber"
-            />
-          </div>
-
-          <div className="vault-filters-right">
-            <select
-              value={filterType}
-              onChange={(e) => setFilterType(e.target.value)}
-              className="vault-select"
-            >
-              <option value="all">{t.vault.filterAllSources}</option>
-              <option value="page">{t.vault.filterPagesOnly}</option>
-              <option value="group">{t.vault.filterGroupsOnly}</option>
-              <option value="reel">{t.vault.filterReelsOnly}</option>
-            </select>
-
-            <button type="button" className="btn-filter-icon">
-              <Filter size={15} />
-              <span>{t.vault.btnAdvancedFilter}</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Empty State */}
-        <div className="cyber-empty-state">
-          <div className="radar-empty-graphic">
-            <div className="radar-circle ring-1"></div>
-            <div className="radar-circle ring-2"></div>
-            <Database size={32} className="radar-icon-center text-cyan" />
-          </div>
-
-          <h4 className="empty-heading">{t.vault.emptyHeading}</h4>
-          <p className="empty-sub">{t.vault.emptySub}</p>
-
-          <button 
-            type="button" 
-            className="btn-launch-cyber"
-            onClick={onNavigateToStudio}
-          >
-            <Sparkles size={15} />
-            <span>{t.vault.btnActivateFirst}</span>
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};

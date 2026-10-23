@@ -4,7 +4,7 @@ import {
   Send, 
   Sparkles
 } from 'lucide-react';
-import type { TargetType, CrawlTask } from '../types';
+import type { CrawlTask } from '../types';
 import { useApp } from '../context/AppContext';
 
 interface MissionModalProps {
@@ -21,7 +21,7 @@ export const MissionModal: React.FC<MissionModalProps> = ({
   const { t } = useApp();
   const [url, setUrl] = useState('');
   const [targetName, setTargetName] = useState('');
-  const [targetType, setTargetType] = useState<TargetType>('page');
+
   const [maxPosts, setMaxPosts] = useState(25);
   const [includeComments, setIncludeComments] = useState(true);
   const [extractMedia, setExtractMedia] = useState(true);
@@ -39,7 +39,7 @@ export const MissionModal: React.FC<MissionModalProps> = ({
     onDeploy({
       url,
       targetName: computedName,
-      targetType,
+      targetType: 'page',
       maxPosts,
       includeComments,
       extractMedia
@@ -93,19 +93,7 @@ export const MissionModal: React.FC<MissionModalProps> = ({
               />
             </div>
 
-            <div className="form-group-cyber">
-              <label className="cyber-label">{t.modal.typeLabel}</label>
-              <select
-                value={targetType}
-                onChange={(e) => setTargetType(e.target.value as TargetType)}
-                className="cyber-select-field"
-              >
-                <option value="page">{t.dashboard.fanpage}</option>
-                <option value="group">{t.dashboard.group}</option>
-                <option value="profile">{t.dashboard.profile}</option>
-                <option value="reel">Viral Reel</option>
-              </select>
-            </div>
+
           </div>
 
           <div className="range-control-group">

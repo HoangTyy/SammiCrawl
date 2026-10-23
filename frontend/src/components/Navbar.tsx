@@ -4,7 +4,6 @@ import {
   LayoutGrid, 
   Terminal, 
   Database, 
-  Wand2, 
   ShieldCheck, 
   Plus, 
   Activity,
@@ -32,11 +31,11 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const tabs = [
     { id: 'dashboard' as NavigationTab, label: t.navbar.dashboard, icon: LayoutGrid },
-    { id: 'crawler-studio' as NavigationTab, label: t.navbar.studio, icon: Terminal },
+    { id: 'crawler-studio' as NavigationTab, label: 'Cào bài', icon: Terminal },
     { id: 'queue' as NavigationTab, label: t.navbar.queue, icon: Activity },
-    { id: 'data-vault' as NavigationTab, label: t.navbar.vault, icon: Database },
-    { id: 'ai-rewriter' as NavigationTab, label: t.navbar.rewriter, icon: Wand2 },
-    { id: 'proxy-stealth' as NavigationTab, label: t.navbar.proxy, icon: ShieldCheck }
+    { id: 'data-vault' as NavigationTab, label: 'Danh sách bài', icon: Database },
+    { id: 'facebook-accounts' as NavigationTab, label: 'Tài khoản Facebook', icon: ShieldCheck },
+    { id: 'proxy-stealth' as NavigationTab, label: 'Thương hiệu & cấu hình', icon: ShieldCheck }
   ];
 
   return (

@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import { api } from '../../api';
+import React, { useEffect, useState } from 'react';
 import { 
   Wand2, 
   Sparkles, 
@@ -15,29 +16,24 @@ export const AiRewriterView: React.FC = () => {
   const { t } = useApp();
   const [inputText, setInputText] = useState('');
   const [outputText, setOutputText] = useState('');
+  const [error, setError] = useState('');
+  const [brands, setBrands] = useState<{id: string; name: string; tone: string; audience: string; rules: string; description?: string; writingStyle?: string; callToAction?: string; requiredKeywords?: string; forbiddenKeywords?: string}[]>([]);
+  useEffect(() => { api<typeof brands>('/records/brands').then(setBrands).catch(e => setError(e.message)); }, []);
   const [tone, setTone] = useState('engaging');
   const [mode, setMode] = useState('rewrite');
   const [isProcessing, setIsProcessing] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const handleRewrite = () => {
-    if (!inputText.trim()) return;
-    setIsProcessing(true);
-    
-    setTimeout(() => {
-      let result = '';
-      if (mode === 'rewrite') {
-        result = `🚀 [REWRITTEN CONTENT]\n\n${inputText}\n\n👉 Key Highlights: Optimized for maximum reach, concise sentence structure, and clear engagement drivers.`;
-      } else if (mode === 'summary') {
-        result = `📌 EXECUTIVE SUMMARY:\n1. Context: ${inputText.slice(0, 80)}...\n2. Core value: Reader engagement and solution clarity.\n3. Sentiment: High viral potential.`;
-      } else {
-        result = `🎬 SHORT VIDEO SCRIPT / REELS (30s):\n[0:00 - 0:03] Hook: "Did you catch this trend today?"\n[0:03 - 0:15] Core story: ${inputText.slice(0, 100)}...\n[0:15 - 0:25] The Twist / Lesson.\n[0:25 - 0:30] CTA: Like & Follow for more updates!`;
-      }
-      setOutputText(result);
-      setIsProcessing(false);
-    }, 700);
-  };
 
+  const [instructions, setInstructions] = useState(() => localStorage.getItem('sammicrawl_ai_instructions') ?? '');
+  const handleRewrite = async () => {
+    if (!inputText.trim()) return;
+    setIsProcessing(true); setError(''); setOutputText('');
+    localStorage.setItem('sammicrawl_ai_instructions', instructions);
+    try { const result = await api<{text: string}>('/ai/rewrite', { text: inputText, tone, mode, instructions }); setOutputText(result.text); }
+    catch(e) { setError((e as Error).message); }
+    finally { setIsProcessing(false); }
+  };
   const handleCopy = () => {
     navigator.clipboard.writeText(outputText);
     setCopied(true);
@@ -81,6 +77,9 @@ export const AiRewriterView: React.FC = () => {
         </div>
       </div>
 
+      <p className="view-subtitle">Bonsai 2 27B · Chỉ chạy một model mỗi lần · Kết quả lưu vào PostgreSQL</p>
+      {error && <p role="alert">{error}</p>}
+      <label>Chọn thương hiệu<select className="cyber-select-field" defaultValue="" onChange={e => { const b = brands.find(b => b.id === e.target.value); if(b) setInstructions(`Thương hiệu: ${b.name}. Giọng văn: ${b.tone}. Đối tượng: ${b.audience}. Quy tắc: ${b.rules ?? ''}. Mô tả: ${b.description ?? ''}. Phong cách: ${b.writingStyle ?? ''}. CTA: ${b.callToAction ?? ''}. Từ khóa bắt buộc: ${b.requiredKeywords ?? ''}. Từ khóa cấm: ${b.forbiddenKeywords ?? ''}`); }}><option value="">Tự nhập chỉ dẫn</option>{brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></label><label>Chỉ dẫn thương hiệu<textarea className="cyber-textarea-field" value={instructions} onChange={e => setInstructions(e.target.value)} placeholder="Giọng văn, đối tượng, CTA, từ khóa cần có hoặc cần tránh…" /></label>
       <div className="rewriter-work-grid">
         {/* Input Panel */}
         <div className="cyber-panel input-panel">

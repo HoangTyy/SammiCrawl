@@ -57,6 +57,7 @@ export const TaskQueueView: React.FC<TaskQueueViewProps> = ({
             <AlertCircle size={12} /> {t.queue.filterFailed}
           </span>
         );
+      case 'paused': return <span className="queue-status-badge pending"><Clock size={12} /> Tạm dừng</span>;
       case 'pending':
       default:
         return (

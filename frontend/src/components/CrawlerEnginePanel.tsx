@@ -55,7 +55,7 @@ export const CrawlerEnginePanel: React.FC<CrawlerEnginePanelProps> = ({ logs }) 
 
           <div className="config-item">
             <span className="config-label">Cơ chế lưu trữ</span>
-            <span className="config-value">SQL Server / MySQL Ready</span>
+            <span className="config-value">PostgreSQL Ready</span>
           </div>
         </div>
 
