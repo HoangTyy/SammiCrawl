@@ -18,4 +18,15 @@ public sealed class ProjectRepository(Store store) : IProjectRepository
     public void AddLog(Audit audit) => store.Logs.Add(audit);
     public Task ReloadAsync(Document document) => store.Entry(document).ReloadAsync();
     public Task<int> SaveChangesAsync() => store.SaveChangesAsync();
+    public async Task<bool> TryUpdateBrandAsync(Guid id, string expectedJson, string updatedJson, string auditMessage)
+    {
+        await using var transaction = await store.Database.BeginTransactionAsync();
+        var changed = await store.Documents.Where(d => d.Id == id && d.Kind == "brands" && d.Json == expectedJson)
+            .ExecuteUpdateAsync(update => update.SetProperty(d => d.Json, updatedJson));
+        if (changed == 0) return false;
+        store.Logs.Add(new Audit { Message = auditMessage });
+        await store.SaveChangesAsync();
+        await transaction.CommitAsync();
+        return true;
+    }
 }

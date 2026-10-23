@@ -10,7 +10,8 @@ import {
   Sun,
   Moon,
   Languages,
-  LogOut
+  LogOut,
+  Radio, Building2, Bookmark, Trash2
 } from 'lucide-react';
 import type { NavigationTab, EngineTelemetry } from '../types';
 import { useApp } from '../context/AppContext';
@@ -27,7 +28,6 @@ interface NavbarProps {
 export const Navbar: React.FC<NavbarProps> = ({
   currentTab,
   onSelectTab,
-  telemetry,
   onOpenMissionModal,
   onLogout,
   loggingOut
@@ -35,12 +35,15 @@ export const Navbar: React.FC<NavbarProps> = ({
   const { theme, toggleTheme, language, toggleLanguage, t } = useApp();
 
   const tabs = [
-    { id: 'dashboard' as NavigationTab, label: t.navbar.dashboard, icon: LayoutGrid },
+    { id: 'dashboard' as NavigationTab, label: 'Báo cáo tổng quan', icon: LayoutGrid },
     { id: 'crawler-studio' as NavigationTab, label: 'Cào bài', icon: Terminal },
-    { id: 'queue' as NavigationTab, label: t.navbar.queue, icon: Activity },
-    { id: 'data-vault' as NavigationTab, label: 'Danh sách bài', icon: Database },
+    { id: 'queue' as NavigationTab, label: 'Hàng đợi tác vụ', icon: Activity },
+    { id: 'data-vault' as NavigationTab, label: 'Bài viết & duyệt đăng', icon: Database },
+    { id: 'channels' as NavigationTab, label: 'Kênh đăng', icon: Radio },
     { id: 'facebook-accounts' as NavigationTab, label: 'Tài khoản Facebook', icon: ShieldCheck },
-    { id: 'proxy-stealth' as NavigationTab, label: 'Thương hiệu & cấu hình', icon: ShieldCheck }
+    { id: 'proxy-stealth' as NavigationTab, label: 'Thương hiệu', icon: Building2 },
+    { id: 'crawl-presets' as NavigationTab, label: 'Mẫu cấu hình cào bài', icon: Bookmark },
+    { id: 'trash' as NavigationTab, label: 'Thùng rác', icon: Trash2 }
   ];
 
   return (
@@ -80,19 +83,6 @@ export const Navbar: React.FC<NavbarProps> = ({
       </nav>
 
       <div className="navbar-right">
-        {/* Telemetry pill */}
-        <div className="telemetry-pill">
-          <span className="telemetry-dot pulse-emerald"></span>
-          <span className="telemetry-text">{t.navbar.apiBridge} {telemetry.apiLatencyMs}ms</span>
-        </div>
-
-        {/* Nodes pill */}
-        <div className="telemetry-pill nodes">
-          <span className="telemetry-text">
-            {t.navbar.clusterReady.replace('{count}', telemetry.workerNodesOnline.toString())}
-          </span>
-        </div>
-
         {/* Language Switcher */}
         <button
           type="button"

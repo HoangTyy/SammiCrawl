@@ -25,6 +25,8 @@ builder.Services.AddScoped<IAccountsService, AccountsService>();
 builder.Services.AddScoped<ISystemService, SystemService>();
 builder.Services.AddScoped<IWorkflowsService, WorkflowsService>();
 builder.Services.AddScoped<IContentService, ContentService>();
+builder.Services.AddScoped<IContentReportService, ContentReportService>();
+builder.Services.AddScoped<IChannelsService, ChannelsService>();
 
 builder.Services.AddSingleton<AiRunner>();
 builder.Services.AddSingleton<FacebookAccountHealth>();

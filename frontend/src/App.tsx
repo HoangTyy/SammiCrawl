@@ -1,3 +1,4 @@
+import { ChannelsView } from './components/views/ChannelsView';
 import { FacebookAccountsView } from './components/views/FacebookAccountsView';
 import { useEffect, useState } from 'react';
 import { AppProvider } from './context/AppContext';
@@ -6,6 +7,7 @@ import { DashboardView } from './components/views/DashboardView';
 import { CrawlerStudioView } from './components/views/CrawlerStudioView';
 import { TaskQueueView } from './components/views/TaskQueueView';
 import { DataVaultView } from './components/views/DataVaultView';
+import { TrashView } from './components/views/TrashView';
 import { WorkspaceView } from './components/views/WorkspaceView';
 
 import { LoginGate } from './components/LoginGate';
@@ -45,8 +47,11 @@ function MainAppShell() {
   {currentTab === 'crawler-studio' && <CrawlerStudioView onManageAccounts={() => setCurrentTab('facebook-accounts')} onViewArticles={brandId => {setArticleBrandId(brandId);setCurrentTab('data-vault');}} />}
   {currentTab === 'queue' && <TaskQueueView tasks={tasks} onDeleteTask={handleDeleteTask} onNavigateToStudio={() => setCurrentTab('crawler-studio')} />}
   {currentTab === 'data-vault' && <DataVaultView initialBrandId={articleBrandId} onNavigateToStudio={() => setCurrentTab('crawler-studio')} />}
+  {currentTab === 'channels' && <ChannelsView onManageAccounts={() => setCurrentTab('facebook-accounts')} onManageBrands={() => setCurrentTab('proxy-stealth')} />}
   {currentTab === 'facebook-accounts' && <FacebookAccountsView />}
-  {currentTab === 'proxy-stealth' && <WorkspaceView />}
+  {currentTab === 'proxy-stealth' && <WorkspaceView key="brands" section="brands" />}
+  {currentTab === 'crawl-presets' && <WorkspaceView key="presets" section="presets" />}
+  {currentTab === 'trash' && <TrashView />}
   </main></div>;
 }
 export function App() { return <AppProvider><LoginGate><MainAppShell /></LoginGate></AppProvider>; }

@@ -1,8 +1,3 @@
-using Microsoft.AspNetCore.DataProtection;
-using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.Cookies;
-using Microsoft.AspNetCore.Identity;
-using System.Security.Claims;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -11,7 +6,9 @@ namespace SammiCrawl.Backend.Services;
 public interface IContentService
 {
     Task<ServiceResult> CreateDraft(Guid id, JsonObject request);
-    Task<ServiceResult> ApproveDraft(Guid id, JsonObject request);
+    Task<ServiceResult> SaveDraft(Guid id, JsonObject request);
+    Task<ServiceResult> ApproveDraft(Guid id, JsonObject request, string reviewer);
+    Task<ServiceResult> EvaluateArticle(Guid id);
     Task<ServiceResult> Rewrite(RewriteRequest r);
 }
 
@@ -19,45 +16,138 @@ public sealed class ContentService(IProjectRepository db, AiRunner ai, IWebHostE
 {
     public async Task<ServiceResult> CreateDraft(Guid id, JsonObject request)
     {
-        var doc = await db.FindDocumentAsync(id, "articles"); if (doc is null) return ServiceResult.NotFound(new { error = "Không tìm thấy bài gốc." });
-        var article = JsonNode.Parse(doc.Json)!; var branch = request["branch"]?.ToString(); if (branch is not ("repost" or "rewrite")) return ServiceResult.BadRequest(new { error = "Chọn repost hoặc rewrite." });
-        var source = article["content"]?.ToString(); if (string.IsNullOrWhiteSpace(source)) return ServiceResult.BadRequest(new { error = "Bài gốc chưa có nội dung." });
-        Document? brand = null; if (Guid.TryParse(article["brandId"]?.ToString(), out var brandId)) brand = await db.FindDocumentAsync(brandId, "brands");
-        if (brand is null || JsonNode.Parse(brand.Json)?["deletedAt"] is not null) return ServiceResult.BadRequest(new { error = "Thương hiệu không còn hoạt động." });
-        var profile = JsonNode.Parse(brand.Json)!; var content = source;
+        var doc = await db.FindDocumentAsync(id, "articles");
+        if (doc is null) return ServiceResult.NotFound(new { error = "Không tìm thấy bài gốc." });
+        var article = JsonNode.Parse(doc.Json)!;
+        var branch = request["branch"]?.ToString();
+        if (branch is not ("repost" or "rewrite")) return ServiceResult.BadRequest(new { error = "Chọn repost hoặc rewrite." });
+        var source = article["content"]?.ToString();
+        if (string.IsNullOrWhiteSpace(source) || source.Length > 20000) return ServiceResult.BadRequest(new { error = "Bài gốc cần từ 1 đến 20.000 ký tự." });
+        Document? brand = null;
+        if (Guid.TryParse(article["brandId"]?.ToString(), out var brandId)) brand = await db.FindDocumentAsync(brandId, "brands");
+        var profile = brand is null ? null : JsonNode.Parse(brand.Json);
+        if (profile is null || profile["deletedAt"] is not null) return ServiceResult.BadRequest(new { error = "Thương hiệu không còn hoạt động." });
+        var channels = BrandPolicy.Channels(profile).Where(c => c is not null && BrandPolicy.Flag(c, "active")).ToList();
+        var channelId = request["channelId"]?.ToString();
+        var channel = channels.FirstOrDefault(c => c?["id"]?.ToString() == channelId) ?? (string.IsNullOrEmpty(channelId) && channels.Count == 1 ? channels[0] : null);
+        if (channel is null) return ServiceResult.BadRequest(new { error = "Chọn một kênh đăng đang bật của thương hiệu." });
+        var content = source;
         if (branch == "rewrite")
         {
-            if (source.Length > 20000) return ServiceResult.BadRequest(new { error = "Bài gốc vượt giới hạn 20.000 ký tự." });
             if (!ai.TryAcquire()) return ServiceResult.Conflict(new { error = "AI đang bận. Chỉ chạy một model mỗi lần." });
-            try { content = await ai.Rewrite(new RewriteRequest(source, profile["tone"]?.ToString() ?? "Thân thiện", "rewrite", profile.ToJsonString())); }
+            try { content = await ai.Rewrite(new RewriteRequest(source, profile["tone"]?.ToString() ?? "Thân thiện", "rewrite", BrandPolicy.Instructions(profile, channel))); }
             catch (Exception ex) { logger.LogError(ex, "Article rewrite failed"); return ServiceResult.Json(new { error = "Bonsai chưa hoàn thành bài viết. Kiểm tra Ollama." }, statusCode: 502); }
             finally { ai.Release(); }
         }
-        var draftId = Guid.NewGuid(); var draft = new JsonObject { ["id"] = draftId.ToString(), ["articleId"] = id.ToString(), ["brandId"] = article["brandId"]?.ToString(), ["branch"] = branch, ["content"] = content, ["sourceContent"] = source, ["media"] = article["media"]?.DeepClone() ?? new JsonArray(), ["status"] = "awaiting_review", ["createdAt"] = DateTimeOffset.UtcNow.ToString("O") };
-        db.AddDocument(new Document { Id = draftId, Kind = "drafts", Json = draft.ToJsonString() }); db.AddLog(new Audit { Message = $"Đã tạo bản nháp {branch} {draftId} từ bài {id}, chờ duyệt." }); await db.SaveChangesAsync(); return ServiceResult.Ok(draft);
+        var draftId = Guid.NewGuid();
+        var draft = new JsonObject {
+            ["id"] = draftId.ToString(), ["articleId"] = id.ToString(), ["brandId"] = article["brandId"]?.ToString(),
+            ["channelId"] = channel["id"]?.ToString(), ["channelSnapshot"] = channel.DeepClone(), ["brandPolicySnapshot"] = profile.DeepClone(),
+            ["publishAccountId"] = channel["publishAccountId"]?.ToString(), ["branch"] = branch, ["content"] = content, ["sourceContent"] = source, ["sourceUrl"] = article["sourceUrl"]?.ToString(),
+            ["media"] = article["media"]?.DeepClone() ?? new JsonArray(), ["status"] = "awaiting_review", ["review"] = new JsonObject(),
+            ["createdAt"] = DateTimeOffset.UtcNow.ToString("O")
+        };
+        db.AddDocument(new Document { Id = draftId, Kind = "drafts", Json = draft.ToJsonString() });
+        db.AddLog(new Audit { Message = $"Đã tạo bản nháp {branch} {draftId} từ bài {id}, kênh {channel["name"]}; chờ duyệt." });
+        await db.SaveChangesAsync();
+        return ServiceResult.Ok(draft);
     }
 
-    public async Task<ServiceResult> ApproveDraft(Guid id, JsonObject request)
+    static string? ApplyDraftEdits(JsonObject draft, JsonObject request)
     {
-        var doc = await db.FindDocumentAsync(id, "drafts"); if (doc is null) return ServiceResult.NotFound(); var draft = JsonNode.Parse(doc.Json)!.AsObject();
+        if (request["content"] is not JsonValue contentValue || !contentValue.TryGetValue<string>(out var content) || string.IsNullOrWhiteSpace(content) || content.Length > 20000) return "Nội dung cần từ 1 đến 20.000 ký tự.";
+        if (request["review"] is not JsonObject review || review.Any(pair => pair.Value is not JsonValue value || !value.TryGetValue<bool>(out _))) return "Checklist duyệt phải là các lựa chọn bật/tắt.";
+        var planned = request["plannedAt"]?.ToString();
+        if (!string.IsNullOrWhiteSpace(planned))
+        {
+            if ((!planned.EndsWith('Z') && !System.Text.RegularExpressions.Regex.IsMatch(planned, @"[+-]\d{2}:\d{2}$")) || !DateTimeOffset.TryParse(planned, out var instant) || instant <= DateTimeOffset.UtcNow) return "Giờ dự kiến phải ở tương lai, có múi giờ.";
+            draft["plannedAt"] = instant.ToUniversalTime().ToString("O");
+        }
+        else draft["plannedAt"] = null;
+        draft["content"] = content;
+        draft["review"] = review.DeepClone();
+        draft["publishAccountId"] = request["publishAccountId"]?.ToString();
+        return null;
+    }
+
+    public async Task<ServiceResult> SaveDraft(Guid id, JsonObject request)
+    {
+        var doc = await db.FindDocumentAsync(id, "drafts");
+        if (doc is null) return ServiceResult.NotFound();
+        var draft = JsonNode.Parse(doc.Json)!.AsObject();
+        if (draft["status"]?.ToString() != "awaiting_review") return ServiceResult.Conflict(new { error = "Không sửa bản nháp đã duyệt." });
+        if (ApplyDraftEdits(draft, request) is string error) return ServiceResult.BadRequest(new { error });
+        draft["updatedAt"] = DateTimeOffset.UtcNow.ToString("O"); doc.Json = draft.ToJsonString();
+        await db.SaveChangesAsync(); return ServiceResult.Ok(draft);
+    }
+
+    public async Task<ServiceResult> ApproveDraft(Guid id, JsonObject request, string reviewer)
+    {
+        var doc = await db.FindDocumentAsync(id, "drafts"); if (doc is null) return ServiceResult.NotFound();
+        var draft = JsonNode.Parse(doc.Json)!.AsObject();
         if (draft["status"]?.ToString() != "awaiting_review") return ServiceResult.Conflict(new { error = "Bản nháp đã được duyệt; không gửi lại." });
-        if (string.IsNullOrWhiteSpace(request["content"]?.ToString())) return ServiceResult.BadRequest(new { error = "Nội dung không được để trống." });
+        if (ApplyDraftEdits(draft, request) is string error) return ServiceResult.BadRequest(new { error });
+        Document? brand = null; if (Guid.TryParse(draft["brandId"]?.ToString(), out var brandId)) brand = await db.FindDocumentAsync(brandId, "brands");
+        var profile = brand is null ? null : JsonNode.Parse(brand.Json);
+        if (profile is null || profile["deletedAt"] is not null) return ServiceResult.BadRequest(new { error = "Thương hiệu không còn hoạt động." });
+        var channel = BrandPolicy.SelectChannel(profile, draft["channelId"]?.ToString() ?? "legacy-group");
+        if (channel is null) return ServiceResult.Conflict(new { error = "Kênh đích đã ngưng hoặc bị xóa. Tạo lại bản nháp với kênh đang hoạt động." });
+        if (draft["channelSnapshot"]?["url"] is JsonNode savedUrl && savedUrl.ToString() != channel["url"]?.ToString()) return ServiceResult.Conflict(new { error = "URL kênh đã thay đổi. Tạo lại bản nháp để xác nhận đúng nơi đăng." });
+        var count = BrandPolicy.WordCount(draft["content"]!.ToString());
+        if (count < BrandPolicy.Number(channel, "minWords", 80) || count > BrandPolicy.Number(channel, "maxWords", 250)) return ServiceResult.BadRequest(new { error = $"Nội dung đang có {count} từ; kênh yêu cầu {channel["minWords"]}–{channel["maxWords"]} từ." });
+        var review = draft["review"]!;
+        var required = new List<(string Key, string Label)> { ("topicReviewed", "Đúng chủ đề và tone thương hiệu") };
+        if (BrandPolicy.Flag(profile, "verifyInformation")) required.Add(("sourceVerified", "Đã kiểm chứng nguồn, số liệu và thời hạn"));
+        if (BrandPolicy.Flag(profile, "requireMediaRights")) required.Add(("mediaRightsConfirmed", "Có quyền sử dụng ảnh/video và nội dung gốc"));
+        if (BrandPolicy.Flag(profile, "requireSponsorLabel")) required.Add(("sponsorshipReviewed", "Đã kiểm tra và gắn nhãn tài trợ nếu có"));
+        if (BrandPolicy.Flag(channel, "requireBranding", channel["type"]?.ToString() == "page")) required.Add(("brandingConfirmed", "Media đáp ứng nhận diện thương hiệu"));
+        var missing = required.Where(item => !BrandPolicy.Flag(review, item.Key, false)).Select(item => item.Label).ToArray();
+        if (missing.Length > 0) return ServiceResult.BadRequest(new { error = "Chưa hoàn tất checklist duyệt.", missing });
         var media = draft["media"] as JsonArray;
         if (media is null || media.Count == 0) return ServiceResult.Conflict(new { error = "Thiếu ảnh/video gốc. Chưa thể duyệt đăng." });
-        var mediaRoot = Path.GetFullPath(Path.Combine(environment.ContentRootPath, "wwwroot", "media")) + Path.DirectorySeparatorChar;
         foreach (var item in media)
-        {
-            var path = item?["url"]?.ToString(); if (path is null || !path.StartsWith("/media/", StringComparison.Ordinal) || path.Contains('%') || item?["status"]?.ToString() != "downloaded") return ServiceResult.Conflict(new { error = "Media gốc chưa được tải và kiểm tra đầy đủ." });
-            var file = Path.GetFullPath(Path.Combine(mediaRoot, path[7..])); if (!file.StartsWith(mediaRoot, StringComparison.Ordinal) || !File.Exists(file) || new FileInfo(file).Length == 0) return ServiceResult.Conflict(new { error = "File ảnh/video gốc không tồn tại hoặc bị rỗng." });
-        }
-        Document? brand = null; if (Guid.TryParse(draft["brandId"]?.ToString(), out var brandId)) brand = await db.FindDocumentAsync(brandId, "brands"); var profile = brand is null ? null : JsonNode.Parse(brand.Json);
-        if (profile is null || profile["deletedAt"] is not null) return ServiceResult.BadRequest(new { error = "Thương hiệu không còn hoạt động." });
-        var group = profile["facebookGroupUrl"]?.ToString(); if (!Uri.TryCreate(group, UriKind.Absolute, out var groupUrl) || groupUrl.Scheme != "https" || !(groupUrl.Host == "facebook.com" || groupUrl.Host.EndsWith(".facebook.com")) || !groupUrl.AbsolutePath.StartsWith("/groups/")) return ServiceResult.BadRequest(new { error = "Cấu hình URL nhóm Facebook đích trong hồ sơ thương hiệu." });
-        if (!Guid.TryParse(request["publishAccountId"]?.ToString(), out var publishId)) return ServiceResult.BadRequest(new { error = "Chọn tài khoản đăng." });
+            if (item?["status"]?.ToString() != "downloaded" || BrandPolicy.LocalMedia(environment.ContentRootPath, item?["url"]?.ToString()) is null) return ServiceResult.Conflict(new { error = "Ảnh/video gốc chưa tải đầy đủ hoặc file không tồn tại." });
+        if (!Guid.TryParse(draft["publishAccountId"]?.ToString(), out var publishId)) return ServiceResult.BadRequest(new { error = "Chọn tài khoản đăng." });
         var publisher = await db.FindDocumentAsync(publishId, "accounts"); var account = publisher is null ? null : JsonNode.Parse(publisher.Json);
-        if (publisher?.ProtectedSecret is null || account?["role"]?.ToString() != "publish" || account?["enabled"]?.GetValue<bool>() == false) return ServiceResult.BadRequest(new { error = "Tài khoản đăng cần đúng vai trò, đang bật và có phiên đăng nhập." });
-        draft["content"] = request["content"]!.ToString(); draft["publishAccountId"] = publishId.ToString(); draft["facebookGroupUrl"] = group; draft["status"] = "approved_pending_worker"; draft["approvedAt"] = DateTimeOffset.UtcNow.ToString("O"); doc.Json = draft.ToJsonString();
-        db.AddLog(new Audit { Message = $"Đã duyệt bản nháp {id}; chưa đăng, chờ worker và xác minh quyền nhóm." }); await db.SaveChangesAsync(); return ServiceResult.Ok(draft);
+        if (publisher?.ProtectedSecret is null || account?["role"]?.ToString() != "publish" || account?["enabled"]?.GetValue<bool>() == false || account?["facebookStatus"]?.ToString() != "active") return ServiceResult.BadRequest(new { error = "Tài khoản đăng cần đúng vai trò, đang bật, có phiên và đã kiểm tra Facebook hoạt động." });
+        draft["channelId"] = channel["id"]?.ToString(); draft["channelSnapshot"] = channel.DeepClone(); draft["brandPolicySnapshot"] = profile.DeepClone();
+        draft["destinationUrl"] = channel["url"]?.ToString(); draft["facebookGroupUrl"] = channel["type"]?.ToString() == "group" ? channel["url"]?.ToString() : null;
+        draft["status"] = "approved_pending_worker"; draft["approvedAt"] = DateTimeOffset.UtcNow.ToString("O"); draft["reviewedBy"] = reviewer;
+        doc.Json = draft.ToJsonString(); db.AddLog(new Audit { Message = $"Đã duyệt {id} vào kênh {channel["name"]}; chưa đăng, chờ worker." });
+        await db.SaveChangesAsync(); return ServiceResult.Ok(draft);
+    }
+
+    public async Task<ServiceResult> EvaluateArticle(Guid id)
+    {
+        var doc = await db.FindDocumentAsync(id, "articles"); if (doc is null) return ServiceResult.NotFound();
+        var article = JsonNode.Parse(doc.Json)!.AsObject();
+        if (!Guid.TryParse(article["brandId"]?.ToString(), out var brandId)) return ServiceResult.BadRequest(new { error = "Bài chưa gắn thương hiệu." });
+        var brand = await db.FindDocumentAsync(brandId, "brands"); var profile = brand is null ? null : JsonNode.Parse(brand.Json);
+        if (profile is null || profile["deletedAt"] is not null) return ServiceResult.BadRequest(new { error = "Thương hiệu không còn hoạt động." });
+        var source = article["content"]?.ToString();
+        if (string.IsNullOrWhiteSpace(source) || source.Length > 20000) return ServiceResult.BadRequest(new { error = "Nội dung cần từ 1 đến 20.000 ký tự." });
+        if (!ai.TryAcquire()) return ServiceResult.Conflict(new { error = "AI đang bận. Chỉ chạy một model mỗi lần." });
+        try
+        {
+            var images = new List<string>(); var warnings = new List<string>();
+            foreach (var media in article["media"] as JsonArray ?? new JsonArray())
+            {
+                if (media?["type"]?.ToString() == "video") { warnings.Add("Video chưa được phân tích khung hình; cần xem thủ công."); continue; }
+                var path = BrandPolicy.LocalMedia(environment.ContentRootPath, media?["url"]?.ToString());
+                if (path is null || !new[] { ".jpg", ".jpeg", ".png", ".webp" }.Contains(Path.GetExtension(path).ToLowerInvariant()) || new FileInfo(path).Length > 5_000_000 || images.Count >= 4) { warnings.Add("Có media chưa phân tích được; cần xem thủ công."); continue; }
+                images.Add(Convert.ToBase64String(await File.ReadAllBytesAsync(path)));
+            }
+            var result = await ai.Evaluate(source, profile, images);
+            var resultWarnings = result["warnings"]!.AsArray().Select(node => node!.ToString()).Concat(warnings).Distinct().ToArray();
+            article["aiStatus"] = warnings.Count > 0 && result["status"]!.ToString() == "recommended" ? "review" : result["status"]!.ToString();
+            article["aiDecision"] = result["decision"]?.DeepClone(); article["aiScore"] = result["score"]!.DeepClone(); article["aiReason"] = result["reason"]!.ToString(); article["aiTopic"] = result["topic"]!.ToString();
+            article["aiWarnings"] = new JsonArray(resultWarnings.Select(text => JsonValue.Create(text)).ToArray());
+            article["aiEvaluatedAt"] = DateTimeOffset.UtcNow.ToString("O"); article["aiBrandUpdatedAt"] = profile["updatedAt"]?.ToString(); article["aiImagesAnalyzed"] = images.Count;
+            doc.Json = article.ToJsonString(); db.AddLog(new Audit { Message = $"Clef đánh giá bài {id}: {article["aiStatus"]}, {article["aiScore"]}/100." }); await db.SaveChangesAsync();
+            return ServiceResult.Ok(article);
+        }
+        catch (Exception ex) { logger.LogError(ex, "Clef evaluation failed"); return ServiceResult.Json(new { error = "Clef chưa đánh giá được. Kiểm tra Ollama/model; kết quả cũ được giữ nguyên." }, statusCode: 502); }
+        finally { ai.Release(); }
     }
 
     public async Task<ServiceResult> Rewrite(RewriteRequest r)

@@ -1,14 +1,11 @@
+import { ContentReport } from '../ContentReport';
 import React, { useState } from 'react';
 import { 
-  Crosshair, 
-  Layers, 
-  Cpu, 
   ArrowUpRight, 
   Send, 
   Copy, 
   Check, 
   Activity,
-  Globe2,
   Sparkles
 } from 'lucide-react';
 import type { EngineTelemetry, TargetType } from '../../types';
@@ -47,68 +44,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   return (
     <div className="view-container dashboard-view">
-      {/* Top Bento Metrics */}
-      <div className="bento-metrics-row">
-        {/* Metric 1 */}
-        <div className="bento-stat-card card-cyan">
-          <div className="stat-card-header">
-            <span className="stat-label">{t.dashboard.statTargets}</span>
-            <div className="stat-icon-wrap cyan">
-              <Crosshair size={16} />
-            </div>
-          </div>
-          <div className="stat-value-group">
-            <span className="stat-number">{telemetry.activeTargets}</span>
-            <span className="stat-badge cyan">{t.dashboard.zeroTargets}</span>
-          </div>
-          <span className="stat-footnote">{t.dashboard.statTargetsFootnote}</span>
-        </div>
-
-        {/* Metric 2 */}
-        <div className="bento-stat-card card-emerald">
-          <div className="stat-card-header">
-            <span className="stat-label">{t.dashboard.statCaptured}</span>
-            <div className="stat-icon-wrap emerald">
-              <Globe2 size={16} />
-            </div>
-          </div>
-          <div className="stat-value-group">
-            <span className="stat-number">{telemetry.postsCaptured}</span>
-            <span className="stat-badge emerald">{t.dashboard.zeroCaptured}</span>
-          </div>
-          <span className="stat-footnote">{t.dashboard.statCapturedFootnote}</span>
-        </div>
-
-        {/* Metric 3 */}
-        <div className="bento-stat-card card-indigo">
-          <div className="stat-card-header">
-            <span className="stat-label">{t.dashboard.statQueue}</span>
-            <div className="stat-icon-wrap indigo">
-              <Layers size={16} />
-            </div>
-          </div>
-          <div className="stat-value-group">
-            <span className="stat-number">{telemetry.queueDepth}</span>
-            <span className="stat-badge indigo">{t.dashboard.queueIdle}</span>
-          </div>
-          <span className="stat-footnote">{t.dashboard.statQueueFootnote}</span>
-        </div>
-
-        {/* Metric 4 */}
-        <div className="bento-stat-card card-amber">
-          <div className="stat-card-header">
-            <span className="stat-label">{t.dashboard.statStealth}</span>
-            <div className="stat-icon-wrap amber">
-              <Cpu size={16} />
-            </div>
-          </div>
-          <div className="stat-value-group">
-            <span className="stat-number">{telemetry.systemHealth}%</span>
-            <span className="stat-badge amber">{t.dashboard.stealthReady}</span>
-          </div>
-          <span className="stat-footnote">{t.dashboard.statStealthFootnote}</span>
-        </div>
-      </div>
+      <ContentReport />
 
       {/* Main Grid: Launcher + Cluster Nodes + Terminal */}
       <div className="dashboard-grid-layout">

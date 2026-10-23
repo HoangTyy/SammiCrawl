@@ -39,6 +39,8 @@ public sealed class RecordsService(IProjectRepository db, IDataProtectionProvide
             data["facebookStatus"] = "unknown"; data["facebookStatusSource"] = "not_checked";
         }
         if (kind == "brands" && string.IsNullOrWhiteSpace(data["name"]?.ToString())) return ServiceResult.BadRequest(new { error = "Thiếu tên thương hiệu." });
+        if (kind == "brands" && BrandPolicy.Validate(data) is string policyError) return ServiceResult.BadRequest(new { error = policyError });
+        if (kind == "brands" && await BrandPolicy.ValidatePublishers(data, db) is string publisherError) return ServiceResult.BadRequest(new { error = publisherError });
         if (kind is "tasks" or "presets")
         {
             foreach (var (field, min, max) in new (string, double, double)[] {
@@ -97,15 +99,18 @@ public sealed class RecordsService(IProjectRepository db, IDataProtectionProvide
         if (record is null) return ServiceResult.NotFound();
         var original = JsonNode.Parse(record.Json)!.AsObject();
         if (original["deletedAt"] is not null) return ServiceResult.Conflict(new { error = "Khôi phục bản ghi trước khi chỉnh sửa." });
+        if (kind == "brands" && data.ContainsKey("updatedAt") && data["updatedAt"]?.ToString() != original["updatedAt"]?.ToString()) return ServiceResult.Conflict(new { error = "Hồ sơ vừa đổi ở nơi khác. Tải lại trước khi sửa." });
         var fields = kind switch
         {
-            "brands" => new[] { "facebookGroupUrl", "name", "description", "language", "tone", "writingStyle", "audience", "callToAction", "requiredKeywords", "forbiddenKeywords", "rules" },
+            "brands" => new[] { "facebookGroupUrl", "name", "description", "language", "tone", "writingStyle", "audience", "callToAction", "requiredKeywords", "forbiddenKeywords", "rules", "allowedTopics", "forbiddenContent", "verifyInformation", "requireMediaRights", "requireSponsorLabel", "channels" },
             "presets" => new[] { "url", "destinationPageUrl", "rewriteMinWords", "rewriteMaxWords", "accountPostLimit", "accountRestMinMs", "accountRestMaxMs", "name", "targetType", "maxPosts", "maxScrolls", "delayMinMs", "delayMaxMs", "minLikes", "minComments", "keywords", "topicDescription", "includeComments", "crawlAccountIds", "publishAccountId", "brandId", "branch", "minAiScore", "topPosts", "rewriteInstructions", "rewriteTemperature", "requireApproval" },
             _ => new[] { "text" }
         };
         foreach (var field in fields) if (data.ContainsKey(field)) original[field] = data[field]?.DeepClone();
         if (kind is "brands" or "presets" && string.IsNullOrWhiteSpace(original["name"]?.ToString())) return ServiceResult.BadRequest(new { error = "Tên không được để trống." });
         if (kind == "rewrites" && string.IsNullOrWhiteSpace(original["text"]?.ToString())) return ServiceResult.BadRequest(new { error = "Nội dung không được để trống." });
+        if (kind == "brands" && BrandPolicy.Validate(original) is string policyError) return ServiceResult.BadRequest(new { error = policyError });
+        if (kind == "brands" && await BrandPolicy.ValidatePublishers(original, db) is string publisherError) return ServiceResult.BadRequest(new { error = publisherError });
         if (kind == "presets")
         {
             foreach (var (field, min, max) in new (string, double, double)[] { ("maxPosts", 1, 1000), ("maxScrolls", 1, 2000), ("delayMinMs", 500, 120000), ("delayMaxMs", 500, 120000), ("minLikes", 0, 10000000), ("minComments", 0, 10000000), ("minAiScore", 0, 100), ("topPosts", 1, 1000), ("rewriteTemperature", 0, 1.5), ("rewriteMinWords", 10, 3000), ("rewriteMaxWords", 10, 3000), ("accountPostLimit", 1, 1000), ("accountRestMinMs", 1000, 3600000), ("accountRestMaxMs", 1000, 3600000) })
@@ -116,7 +121,10 @@ public sealed class RecordsService(IProjectRepository db, IDataProtectionProvide
                 if (original[pair.Item1] is not null && original[pair.Item2] is not null && original[pair.Item1]!.GetValue<double>() > original[pair.Item2]!.GetValue<double>()) return ServiceResult.BadRequest(new { error = "Giá trị tối thiểu không được lớn hơn tối đa." });
             original["targetType"] = "page"; original["extractMedia"] = true;
         }
-        original["updatedAt"] = DateTimeOffset.UtcNow.ToString("O"); record.Json = original.ToJsonString();
+        original["updatedAt"] = DateTimeOffset.UtcNow.ToString("O");
+        if (kind == "brands") return await db.TryUpdateBrandAsync(id, record.Json, original.ToJsonString(), $"Đã chỉnh sửa brands · {id}")
+            ? ServiceResult.Ok(original) : ServiceResult.Conflict(new { error = "Hồ sơ vừa được cập nhật ở nơi khác. Tải lại trước khi sửa." });
+        record.Json = original.ToJsonString();
         db.AddLog(new Audit { Message = $"Đã chỉnh sửa {kind} · {id}" }); await db.SaveChangesAsync(); return ServiceResult.Ok(original);
     }
 

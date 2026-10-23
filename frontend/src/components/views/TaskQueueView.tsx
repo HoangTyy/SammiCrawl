@@ -1,3 +1,4 @@
+import { HelpTooltip } from '../HelpTooltip';
 import React, { useState } from 'react';
 import { 
   Activity, 
@@ -69,7 +70,7 @@ export const TaskQueueView: React.FC<TaskQueueViewProps> = ({
   };
 
   return (
-    <div className="view-container queue-view">
+    <div className="view-container queue-view"><div className="view-header-strip"><h2 className="view-title">Hàng đợi tác vụ<HelpTooltip text="Theo dõi trạng thái và tiến trình các tác vụ thu thập bài viết." /></h2></div>
       {/* Pipeline Visualizer Strip */}
       <div className="pipeline-strip-card">
         <div className="pipeline-header">
@@ -134,7 +135,7 @@ export const TaskQueueView: React.FC<TaskQueueViewProps> = ({
 
           <div className="queue-controls-right">
             {/* Filter buttons */}
-            <div className="cyber-filter-pill-group">
+            <div className="cyber-filter-pill-group" role="group" aria-label="Lọc trạng thái tác vụ">
               {[
                 { id: 'all', label: t.queue.filterAll },
                 { id: 'running', label: t.queue.filterRunning },
@@ -145,6 +146,8 @@ export const TaskQueueView: React.FC<TaskQueueViewProps> = ({
                 <button
                   key={tab.id}
                   type="button"
+                  aria-pressed={activeFilter === tab.id}
+                  data-status={tab.id}
                   className={`filter-btn-cyber ${activeFilter === tab.id ? 'active' : ''}`}
                   onClick={() => setActiveFilter(tab.id)}
                 >

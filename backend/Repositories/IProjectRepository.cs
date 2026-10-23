@@ -15,4 +15,5 @@ public interface IProjectRepository
     void AddLog(Audit audit);
     Task ReloadAsync(Document document);
     Task<int> SaveChangesAsync();
+    Task<bool> TryUpdateBrandAsync(Guid id, string expectedJson, string updatedJson, string auditMessage);
 }

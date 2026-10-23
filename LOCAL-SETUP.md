@@ -65,3 +65,23 @@ Worker cào Facebook, tải/kiểm chứng media, Clef lọc nền và đăng Fa
 ## Sao lưu và chuyển dữ liệu
 
 Bản SQL Server, `.env` và khóa giải mã trước chuyển đổi nằm trong `work/db-migration/` trên máy phát triển. Công cụ `--migrate-postgres` chỉ cho DB đích trống, so sánh hash sau chuẩn hóa UTC/microsecond rồi mới commit. Bản sao lưu và khóa worker/bridge không đưa lên GitHub. Connection string PostgreSQL được lưu chung trong appsettings.json theo cấu hình dự án; khi reset mật khẩu DB cần sửa file này và triển khai lại.
+
+## Hồ sơ và workflow theo StuXP
+
+Hồ sơ có danh sách kênh Group/Page, mỗi kênh có ID ổn định, URL, chỉ tiêu/ngày, đối tượng, tone, yêu cầu nội dung/media, giới hạn từ và quy định nhận diện. Brand giữ các chủ đề được phép, nội dung cấm và checklist dùng chung. Dữ liệu Group cũ vẫn đọc qua facebookGroupUrl nếu chưa có channels.
+
+Database đã nạp 8 thương hiệu và 14 kênh từ workbook StuXP theo yêu cầu. Mức tối thiểu các Group cộng 50 bài/ngày; Page chưa ghi chỉ tiêu trong nguồn giữ 0 (chưa đặt). Group hub áp dụng 100–250 từ theo yêu cầu riêng; Group khác 80–250, Page 50–150. Dữ liệu này ở PostgreSQL, không tự seed mỗi khi khởi động. Không đưa nội dung trả công CTV vào nghiệp vụ hiện tại.
+
+POST /api/articles/{id}/evaluate gọi clef-flash:latest qua /v1/systemone, hỗ trợ tối đa 4 ảnh local JPG/PNG/WebP (mỗi ảnh 5 MB), lưu quyết định có cấu trúc, điểm phù hợp, chủ đề, lý do lựa chọn và cảnh báo. Điểm 0–100 quy đổi từ thang phù hợp 0–4, không phải xác suất bài đúng. Clef là decision model, không sinh đoạn giải thích tự do. Video và media không phân tích được sẽ yêu cầu xem thủ công. Lỗi AI giữ kết quả cũ. Đây là đánh giá thủ công cho bài đã có; worker lọc nền chưa triển khai.
+
+Khi Repost/Rewrite phải chọn một kênh đang bật. Bonsai nhận profile và hướng dẫn riêng của kênh. Draft giữ bản chụp profile, kênh, nguồn và media; sửa nội dung, checklist và giờ dự kiến tại PUT /api/drafts/{id}. Bản nháp lưu xong có thể mở lại trong Danh sách bài → Bản nháp & lịch đăng. Thay nội dung trên UI sẽ bỏ chọn checklist để duyệt lại.
+
+Duyệt kiểm tra giới hạn từ, checklist bắt buộc, file media có thật, kênh còn hoạt động/không đổi URL và tài khoản đăng đã xác minh active. Lưu người duyệt, giờ duyệt và giờ dự kiến (UTC; UI hiển thị Việt Nam). Sau duyệt chỉ là approved_pending_worker, không đăng Facebook. Không có scheduler hoặc worker tự chạy lịch trong bản này.
+
+GET /api/reports/content?date=yyyy-MM-dd thống kê từng kênh và lịch dự kiến theo ngày Việt Nam. Số thu thập/chờ duyệt là tổng hiện có; đã đăng/còn thiếu theo ngày chọn. Chỉ đếm published khi có URL bài Facebook và thời gian đăng không ở tương lai. Duyệt và đặt giờ không được đếm là đã đăng. Kiểm thử chỉ dùng dữ liệu nội bộ, không đăng bài thật.
+
+## Quản lý kênh đăng riêng
+
+Menu Kênh đăng đọc chung channels trong hồ sơ thương hiệu, không nhân bản kênh. Có tìm kiếm/lọc thương hiệu, Group/Page, trạng thái; thêm/sửa/ngưng/bật lại và gán tài khoản role=publish đang được bật. Tình trạng Facebook của tài khoản hiển thị riêng với quyền đăng trên kênh (chưa xác minh). Không có thao tác đăng bài hoặc kiểm tra quyền Facebook trong trang này.
+
+GET /api/channels; POST /api/brands/{brandId}/channels; PUT /api/brands/{brandId}/channels/{channelId}. Kênh dùng ID ổn định; ngưng không xóa lịch sử. Tài khoản phụ trách trở thành lựa chọn mặc định trong bản nháp mới, người duyệt vẫn có thể chọn tài khoản đăng hợp lệ khác. Lưu hồ sơ/kênh dùng kiểm tra phiên bản và ghi có điều kiện để tránh ghi đè thay đổi đồng thời. Dữ liệu 14 kênh hiện có được giữ nguyên, không tự gán tài khoản.

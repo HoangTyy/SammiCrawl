@@ -1,6 +1,6 @@
 export type TargetType = 'page' | 'group' | 'profile' | 'reel' | 'post';
 export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'paused';
-export type NavigationTab = 'dashboard' | 'crawler-studio' | 'queue' | 'data-vault' | 'proxy-stealth' | 'facebook-accounts';
+export type NavigationTab = 'dashboard' | 'crawler-studio' | 'queue' | 'data-vault' | 'proxy-stealth' | 'facebook-accounts' | 'channels' | 'crawl-presets' | 'trash';
 
 export interface CrawlTask {
   id: string;
