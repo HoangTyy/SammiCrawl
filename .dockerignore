@@ -5,3 +5,5 @@
 **/bin
 **/obj
 work
+
+**/appsettings.Local.json

@@ -20,7 +20,7 @@ services:
     build: .
     environment:
       ASPNETCORE_URLS: http://+:8080
-      LocalDevelopment__SkipLogin: true
+      LocalDevelopment__SkipLogin: ${SKIP_LOGIN:-true}
       DatabaseProvider: PostgreSql
       ConnectionStrings__Database: ${POSTGRES_CONNECTION:?Set POSTGRES_CONNECTION in .env}
       WorkerApiKey: ${WORKER_API_KEY:?Set WORKER_API_KEY in .env}
