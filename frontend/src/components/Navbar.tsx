@@ -9,7 +9,8 @@ import {
   Activity,
   Sun,
   Moon,
-  Languages
+  Languages,
+  LogOut
 } from 'lucide-react';
 import type { NavigationTab, EngineTelemetry } from '../types';
 import { useApp } from '../context/AppContext';
@@ -19,13 +20,17 @@ interface NavbarProps {
   onSelectTab: (tab: NavigationTab) => void;
   telemetry: EngineTelemetry;
   onOpenMissionModal: () => void;
+  onLogout: () => Promise<void>;
+  loggingOut: boolean;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
   currentTab,
   onSelectTab,
   telemetry,
-  onOpenMissionModal
+  onOpenMissionModal,
+  onLogout,
+  loggingOut
 }) => {
   const { theme, toggleTheme, language, toggleLanguage, t } = useApp();
 
@@ -107,6 +112,17 @@ export const Navbar: React.FC<NavbarProps> = ({
           title={theme === 'dark' ? t.navbar.lightMode : t.navbar.darkMode}
         >
           {theme === 'dark' ? <Sun size={16} className="sun-icon" /> : <Moon size={16} className="moon-icon" />}
+        </button>
+
+        <button
+          type="button"
+          className="btn-toggle-switch"
+          onClick={() => void onLogout()}
+          disabled={loggingOut}
+          title="Đăng xuất"
+        >
+          <LogOut size={16} />
+          <span>{loggingOut ? 'Đang đăng xuất…' : 'Đăng xuất'}</span>
         </button>
 
         {/* Action Button */}

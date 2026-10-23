@@ -14,6 +14,12 @@ import type { NavigationTab, CrawlTask, EngineTelemetry, TargetType } from './ty
 import './App.css';
 function MainAppShell() {
   const [articleBrandId,setArticleBrandId] = useState('');
+  const [loggingOut, setLoggingOut] = useState(false);
+  const handleLogout = async () => {
+    setLoggingOut(true);
+    try { await api('/auth/logout', {}); window.location.reload(); }
+    catch (error) { setConnection((error as Error).message); setLoggingOut(false); }
+  };
   const [currentTab, setCurrentTab] = useState<NavigationTab>('dashboard');
 
   const [tasks, setTasks] = useState<CrawlTask[]>([]);
@@ -32,8 +38,8 @@ function MainAppShell() {
     localStorage.setItem('sammicrawl_crawl',JSON.stringify({...previous,url,maxPosts,targetType:'page'}));setCurrentTab('crawler-studio');
   };
   const handleDeleteTask = (id: string) => { void api(`/records/tasks/${id}`, undefined, 'DELETE').then(refresh).catch(e => setConnection(e.message)); };
-  return <div className="cyber-app-shell"><Navbar currentTab={currentTab} onSelectTab={setCurrentTab} telemetry={telemetry} onOpenMissionModal={() => setCurrentTab('crawler-studio')} />
-  <div role="status" style={{ padding: '8px 24px', color: 'var(--text-secondary)', fontSize: 13 }}>{connection} <span style={{ marginLeft: 12 }}>Chế độ local</span></div>
+  return <div className="cyber-app-shell"><Navbar onLogout={handleLogout} loggingOut={loggingOut} currentTab={currentTab} onSelectTab={setCurrentTab} telemetry={telemetry} onOpenMissionModal={() => setCurrentTab('crawler-studio')} />
+  <div role="status" style={{ padding: '8px 24px', color: 'var(--text-secondary)', fontSize: 13 }}>{connection}</div>
   <main className="cyber-main-canvas">
   {currentTab === 'dashboard' && <DashboardView telemetry={telemetry} logs={logs} onLaunchTarget={handleLaunchTarget} onNavigateToStudio={() => setCurrentTab('crawler-studio')} />}
   {currentTab === 'crawler-studio' && <CrawlerStudioView onManageAccounts={() => setCurrentTab('facebook-accounts')} onViewArticles={brandId => {setArticleBrandId(brandId);setCurrentTab('data-vault');}} />}
