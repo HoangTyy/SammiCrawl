@@ -7,7 +7,7 @@ import type { Brand, BrandChannel } from '../../brandPolicy';
 
 type Media = { url: string; type: string; status?: string };
 type Article = { id: string; brandId: string; title?: string; content: string; sourceUrl: string; createdAt: string; likes?: number; comments?: number; aiStatus?: string; aiScore?: number; aiReason?: string; aiTopic?: string; aiWarnings?: string[]; aiBrandUpdatedAt?: string; aiEvaluatedAt?: string; aiImagesAnalyzed?: number; media?: Media[] };
-type Draft = { id: string; articleId: string; brandId: string; channelId?: string; channelSnapshot?: BrandChannel; branch: string; content: string; sourceContent?: string; sourceUrl?: string; media: Media[]; status: string; publishAccountId?: string; review?: Record<string, boolean>; plannedAt?: string; createdAt: string };
+type Draft = { rewriteVisualContext?: string; rewriteVisualConfirmedAt?: string; rewriteImagesProvided?: number; rewriteVisionModel?: string; id: string; articleId: string; brandId: string; channelId?: string; channelSnapshot?: BrandChannel; branch: string; content: string; sourceContent?: string; sourceUrl?: string; media: Media[]; status: string; publishAccountId?: string; review?: Record<string, boolean>; plannedAt?: string; createdAt: string };
 type Account = { id: string; name: string; role: string; enabled?: boolean; facebookStatus?: string };
 const safeSource = (url?: string) => { try { const u = new URL(url ?? ''); return u.protocol === 'https:' && (u.hostname === 'facebook.com' || u.hostname.endsWith('.facebook.com')) ? url : undefined; } catch { return undefined; } };
 const localMedia = (url: string) => /^\/media\/[a-zA-Z0-9_./-]+$/.test(url) && !url.includes('..');
@@ -19,6 +19,15 @@ export function DataVaultView({ onNavigateToStudio, initialBrandId = '' }: { onN
   const [articles, setArticles] = useState<Article[]>([]); const [drafts, setDrafts] = useState<Draft[]>([]); const [brands, setBrands] = useState<Brand[]>([]); const [accounts, setAccounts] = useState<Account[]>([]);
   const [brandId, setBrandId] = useState(initialBrandId); const [filter, setFilter] = useState('all'); const [query, setQuery] = useState(''); const [view, setView] = useState('articles');
   const [message, setMessage] = useState(''); const [loading, setLoading] = useState(true); const [busy, setBusy] = useState(false);
+  const [visual, setVisual] = useState<{ context: string; imageFingerprint: string; imageCount: number } | null>(null);
+  const [visualConfirmed, setVisualConfirmed] = useState(false);
+  const [readingImages, setReadingImages] = useState(false);
+  const [rewriteProgress, setRewriteProgress] = useState<number | null>(null);
+  useEffect(() => {
+    if (rewriteProgress === null || rewriteProgress >= 100) return;
+    const timer = window.setInterval(() => setRewriteProgress(value => value === null || value >= 100 ? value : Math.min(90, value + Math.max(1, Math.round((90 - value) / 18)))), 1000);
+    return () => window.clearInterval(timer);
+  }, [rewriteProgress !== null && rewriteProgress < 100]);
   const [selected, setSelected] = useState<Article | null>(null); const [draft, setDraft] = useState<Draft | null>(null); const [channelId, setChannelId] = useState('');
   const load = useCallback(async () => {
     const [a, b, p, d] = await Promise.all([api<Article[]>('/records/articles'), api<Brand[]>('/records/brands'), api<Account[]>('/records/accounts'), api<Draft[]>('/records/drafts')]);
@@ -34,12 +43,21 @@ export function DataVaultView({ onNavigateToStudio, initialBrandId = '' }: { onN
   const selectedBrand = brands.find(b => b.id === (draft?.brandId ?? selected?.brandId));
   const channels = brandChannels(selectedBrand).filter(channel => channel.active !== false);
   const selectedChannel = channels.find(channel => channel.id === (draft ? draft.channelId ?? "legacy-group" : channelId)) ?? draft?.channelSnapshot;
-  const openArticle = (article: Article) => { setSelected(article); setDraft(null); setMessage(''); setChannelId(brandChannels(brands.find(b => b.id === article.brandId)).find(c => c.active !== false)?.id ?? ''); };
-  const openDraft = (value: Draft) => { setDraft(structuredClone(value)); setMessage(''); setSelected(articles.find(a => a.id === value.articleId) ?? { id: value.articleId, brandId: value.brandId, content: value.sourceContent ?? '', sourceUrl: value.sourceUrl ?? '', createdAt: value.createdAt }); };
+  const openArticle = (article: Article) => { setSelected(article); setDraft(null); setVisual(null); setVisualConfirmed(false); setRewriteProgress(null); setMessage(''); setChannelId(brandChannels(brands.find(b => b.id === article.brandId)).find(c => c.active !== false)?.id ?? ''); };
+  const openDraft = (value: Draft) => { setDraft(structuredClone(value)); setVisual(null); setVisualConfirmed(false); setRewriteProgress(null); setMessage(''); setSelected(articles.find(a => a.id === value.articleId) ?? { id: value.articleId, brandId: value.brandId, content: value.sourceContent ?? '', sourceUrl: value.sourceUrl ?? '', createdAt: value.createdAt }); };
   const prepare = async (branch: string) => {
-    if (!selected) return; setBusy(true); setMessage('');
-    try { const result = await api<Draft>(`/articles/${selected.id}/draft`, { branch, channelId }); setDraft(result); await load(); }
-    catch (e) { setMessage((e as Error).message); } finally { setBusy(false); }
+    if (!selected) return;
+    if (branch === 'rewrite' && selected.media?.length && !visual) {
+      setBusy(true); setReadingImages(true); setMessage(''); setRewriteProgress(null);
+      try { setVisual(await api<{ context: string; imageFingerprint: string; imageCount: number }>(`/articles/${selected.id}/visual-context`, {})); setVisualConfirmed(false); }
+      catch(e) { setMessage((e as Error).message); }
+      finally { setBusy(false); setReadingImages(false); }
+      return;
+    }
+    if (branch === 'rewrite' && visual && !visualConfirmed) { setMessage('Hãy đối chiếu, sửa và xác nhận ghi chú ảnh trước.'); return; }
+    setBusy(true); setMessage(''); setRewriteProgress(branch === 'rewrite' ? 0 : null);
+    try { const result = await api<Draft>(`/articles/${selected.id}/draft`, { branch, channelId, visualContext: visual?.context, imageFingerprint: visual?.imageFingerprint, visualContextConfirmed: visualConfirmed }); setDraft(result); if (branch === 'rewrite') setRewriteProgress(100); await load(); }
+    catch (e) { setRewriteProgress(null); setMessage((e as Error).message); } finally { setBusy(false); }
   };
   const evaluate = async (article: Article) => {
     setBusy(true); setMessage('');
@@ -73,17 +91,21 @@ export function DataVaultView({ onNavigateToStudio, initialBrandId = '' }: { onN
     {selected && <div className="workspace-modal-overlay"><section role="dialog" aria-modal="true" aria-label="Xem trước bài viết" className="cyber-panel workspace-editor"><header><div><h3>{draft ? draft.branch === 'repost' ? 'Duyệt bản repost' : 'Duyệt bản Bonsai viết lại' : 'Chuẩn bị nội dung'}</h3><p>{selectedBrand?.name}</p></div><button className="workspace-icon-button" disabled={busy} aria-label="Đóng" onClick={() => { setSelected(null); setDraft(null); }}><X size={20} /></button></header>
       <div className="article-preview">
         {draft ? <div className="config-notice"><strong>Kênh đích: {selectedChannel?.name ?? 'Kênh đã ngưng'}</strong><p>{selectedChannel?.type === 'page' ? 'Page' : 'Group'} · {selectedChannel?.minWords}–{selectedChannel?.maxWords} từ · {selectedChannel?.url}</p><p>{selectedChannel?.imageRequirements}</p></div> : <label className="setting-field">Kênh đăng đích<select className="cyber-select-field" value={channelId} onChange={e => setChannelId(e.target.value)}><option value="">Chọn kênh trong hồ sơ thương hiệu</option>{channels.map(channel => <option key={channel.id} value={channel.id}>{channel.name} · {channel.type === 'group' ? 'Group' : 'Page'} · {channel.minWords}–{channel.maxWords} từ</option>)}</select></label>}
-        {busy && <p role="status">Đang xử lý… Chỉ một model AI chạy mỗi lần.</p>}
+        {rewriteProgress !== null ? <div className="rewrite-progress" role="status" aria-live="polite"><div className="rewrite-progress-heading"><strong>{rewriteProgress === 100 ? 'Đã viết lại xong' : 'Bonsai đang viết lại từ nguồn đã xác nhận…'}</strong><span>{rewriteProgress}%{rewriteProgress < 100 ? ' · ước tính' : ''}</span></div><progress aria-label="Tiến độ viết lại ước tính" max={100} value={rewriteProgress} /><small>{rewriteProgress === 100 ? 'Đã nhận nội dung và lưu bản nháp.' : rewriteProgress >= 90 ? 'Đang chờ AI hoàn tất. Bài dài có thể cần thêm thời gian.' : 'Tiến độ ước tính trong lúc chờ AI; chỉ đạt 100% khi đã lưu bản nháp.'}</small></div> : busy && <p role="status">{readingImages ? 'Bonsai đang đọc chữ trong ảnh, chưa viết bài…' : 'Đang xử lý… Chỉ một model AI chạy mỗi lần.'}</p>}
+        {draft?.branch === 'rewrite' && <p className="config-notice">{draft.rewriteVisualConfirmedAt ? `Đã đối chiếu ${draft.rewriteImagesProvided} ảnh. Bài được viết từ ghi chú ảnh đã xác nhận; vẫn cần duyệt nội dung.` : (draft.rewriteImagesProvided ?? 0) > 0 ? 'Bản nháp cũ chưa có bước xác nhận chữ trong ảnh. Nên tạo lại từ bài nguồn.' : 'Bản viết lại chỉ có phần chữ, không có ảnh.'}</p>}
+
         {draft ? <label className="setting-field">Nội dung đăng · {wordCount} từ<textarea rows={12} className="cyber-textarea-field" disabled={!editable || busy} value={draft.content} onChange={e => setDraft({ ...draft, content: e.target.value, review: {} })} /><small>Thay nội dung sẽ bỏ đánh dấu checklist để kiểm tra lại.</small></label> : <p className="article-content">{selected.content}</p>}
         <a href={safeSource(draft?.sourceUrl ?? selected.sourceUrl)} target="_blank" rel="noreferrer">Đối chiếu bài gốc</a>
         <div className="article-media-grid">{(draft?.media ?? selected.media ?? []).map((media, i) => <div key={i}>{localMedia(media.url) ? media.type === 'video' ? <video controls preload="metadata" src={media.url} /> : <img src={media.url} alt={`Ảnh gốc ${i + 1}`} /> : <p>Media #{i + 1} chưa có file local hợp lệ.</p>}</div>)}</div>
+        {!draft && visual && <div className="config-notice visual-context-review"><h4>Đối chiếu chữ và ý trong ảnh</h4><p>AI có thể đọc sai. Sửa ghi chú dưới đây theo ảnh gốc; chữ viết tắt chỉ giải thích khi bạn biết chắc. Không xác nhận nếu còn [không rõ].</p><label className="setting-field">Nội dung ảnh dùng để viết bài<textarea rows={7} className="cyber-textarea-field" maxLength={8000} disabled={busy} value={visual.context} onChange={e => { setVisual({ ...visual, context: e.target.value }); setVisualConfirmed(false); }} /></label><label className="visual-confirm"><input type="checkbox" disabled={busy || !visual.context.trim() || visual.context.includes('[không rõ]')} checked={visualConfirmed} onChange={e => setVisualConfirmed(e.target.checked)} />Tôi đã đối chiếu và sửa đúng chữ, số, tên và ý của ảnh</label></div>}
+        {draft?.rewriteVisualContext && <details className="config-notice"><summary>Ghi chú ảnh đã xác nhận dùng cho bản nháp</summary><p className="article-content">{draft.rewriteVisualContext}</p></details>}
         {!(draft?.media ?? selected.media ?? []).length && <p className="config-notice">Chưa có ảnh/video gốc. Chưa thể duyệt đăng.</p>}
         {draft ? <>
           <div className="policy-checklist"><h4>Checklist trước khi duyệt</h4><p className="cyber-hint">Đây là xác nhận của người duyệt. Tải được media không đồng nghĩa có quyền sử dụng.</p>{reviewFields(selectedBrand, selectedChannel).map(([key, label]) => <label key={key}><input type="checkbox" disabled={!editable || busy} checked={draft.review?.[key] === true} onChange={e => setDraft({ ...draft, review: { ...draft.review, [key]: e.target.checked } })} />{label}</label>)}</div>
           <label className="setting-field">Tài khoản đăng<select className="cyber-select-field" disabled={!editable || busy} value={draft.publishAccountId ?? ''} onChange={e => setDraft({ ...draft, publishAccountId: e.target.value })}><option value="">Chọn tài khoản đăng đã xác minh</option>{accounts.filter(a => a.role === 'publish' && a.enabled !== false).map(account => <option key={account.id} value={account.id} disabled={account.facebookStatus !== 'active'}>{account.name}{account.facebookStatus !== 'active' ? ' · chưa xác minh hoạt động' : ''}</option>)}</select></label>
           <label className="setting-field">Giờ đăng dự kiến (Việt Nam, tùy chọn)<input className="cyber-input-field" type="datetime-local" disabled={!editable || busy} value={localPlan(draft.plannedAt)} onChange={e => setDraft({ ...draft, plannedAt: e.target.value ? (Number.isFinite(Date.parse(`${e.target.value}:00+07:00`)) ? new Date(`${e.target.value}:00+07:00`).toISOString() : undefined) : undefined })} /></label>
           <div className="preset-buttons-row"><button className="btn-preset" disabled={busy || !editable} onClick={() => void saveDraft(false)}>Lưu bản nháp</button><button className="btn-launch-cyber" disabled={busy || !editable || !draft.publishAccountId || reviewFields(selectedBrand, selectedChannel).some(([key]) => !draft.review?.[key])} onClick={() => void saveDraft(true)}>{editable ? 'Duyệt · chờ đăng' : 'Đã duyệt · chờ worker'}</button></div>
-        </> : <div className="preset-buttons-row"><button className="btn-preset" disabled={busy || !channelId} onClick={() => void prepare('repost')}>Repost nội dung gốc</button><button className="btn-launch-cyber" disabled={busy || !channelId} onClick={() => void prepare('rewrite')}>Rewrite bằng Bonsai</button><button className="btn-preset" disabled={busy} onClick={() => void evaluate(selected)}>Clef đánh giá</button></div>}
+        </> : <div className="preset-buttons-row"><button className="btn-preset" disabled={busy || !channelId} onClick={() => void prepare('repost')}>Repost nội dung gốc</button><button className="btn-launch-cyber" disabled={busy || !channelId || Boolean(visual && !visualConfirmed)} onClick={() => void prepare('rewrite')}>{selected.media?.length && !visual ? 'Đọc ảnh trước khi rewrite' : 'Rewrite bằng Bonsai'}</button><button className="btn-preset" disabled={busy} onClick={() => void evaluate(selected)}>Clef đánh giá</button></div>}
         {message && <p role="status" className="config-notice">{message}</p>}
         <p className="cyber-hint">Lưu giờ và duyệt không tự đăng Facebook. Worker đăng bài chưa triển khai.</p>
       </div>

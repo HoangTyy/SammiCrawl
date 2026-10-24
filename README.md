@@ -1,5 +1,7 @@
 # SammiCrawl
 
+Dùng AI từ máy khác: xem [REMOTE-AI.md](REMOTE-AI.md).
+
 > **AI/người mới tiếp quản:** đọc [AGENTS.md](AGENTS.md) trước. Cách chạy và hiện trạng triển khai ở [LOCAL-SETUP.md](LOCAL-SETUP.md). Các hướng dẫn frontend/backend bên dưới là tham khảo; cấu hình hiện hành ưu tiên hai file trên.
 
 Hệ thống SammiCrawl bao gồm 2 phần chính:

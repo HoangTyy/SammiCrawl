@@ -103,3 +103,19 @@ Xem Controllers để biết method/body/auth chính xác:
 6. Không public trực tiếp Ollama 11434. Bridge có auth; hostname Cloudflare mong muốn `ollama.khanhdc.id.vn` chưa được cấu hình/xác minh trong repo. Không nói tunnel hoạt động chỉ vì có domain.
 7. Sửa UI thì xem trang thực tế, kiểm tra trạng thái chọn/disabled/focus, biểu mẫu và màn hình hẹp. Dùng CSS/token đang có, không thay framework chỉ để làm đẹp.
 8. Sau thay đổi, ghi rõ đã sửa gì, kiểm tra gì, hạn chế còn lại. Cập nhật tài liệu này nếu kiến trúc/luồng/cách chạy thay đổi.
+
+## AI từ máy khác
+
+Đọc REMOTE-AI.md. AiBridgeController chỉ cho Bearer RemoteAiKey, port 8081 (host 5081) chặn mọi đường dẫn ngoài bridge. AiRunner tự dùng gateway khi RemoteAi:BaseUrl có giá trị; máy chủ AI phải để trống để tránh gọi vòng. Gateway và workflow local chung singleton gate; busy trả 409, không có hàng đợi chờ AI. Không commit .env hoặc config/*.local.env.
+
+Rewrite Facebook: AiRunner hướng dẫn văn bản thuần và FacebookPlainText.Clean loại Markdown trước khi trả/lưu, cả gateway và local. DataVaultView hiển thị phần trăm ước tính tối đa 90% khi chờ; chỉ 100% khi CreateDraft trả thành công. Chưa có tiến độ token thực từ Ollama. Không âm thầm sửa draft cũ.
+
+RewriteOutput.Validate chặn bản trả lại nguyên văn (kể cả chỉ đổi dấu câu, hoa/thường hoặc Markdown), trả 422 thay vì lưu draft. Lời yêu cầu biên tập phải có trong user message, không chỉ system; hồ sơ thương hiệu không được lấn át chủ đề nguồn. Nguồn quá ngắn ưu tiên không bịa thêm để kéo đủ số từ; kiểm tra độ dài vẫn thực hiện trước khi duyệt.
+
+BrandPolicy.Instructions cho rewrite chỉ truyền thông tin biên tập (giọng, đối tượng, cấu trúc, CTA, nội dung cấm/quy tắc); không truyền nguyên danh mục chủ đề/dịch vụ và thông tin hạ tầng kênh để model không tự chèn quảng cáo hoặc đổi chủ đề nguồn.
+
+Rewrite có ảnh: ContentService đọc tối đa 4 file JPG/PNG/WebP local, 5 MB/ảnh, gửi RewriteRequest.Images cho Bonsai vision trong cùng request; không cần nạp thêm model. Gateway cũng nhận/kiểm tra Images. Thiếu file/media hoặc có video chưa phân tích trả 409, không âm thầm bỏ ảnh. Draft lưu rewriteImagesProvided và rewriteVisionModel để UI phân biệt draft cũ chưa gửi ảnh. Số ảnh gửi không phải bằng chứng OCR/diễn giải đúng; người duyệt phải đối chiếu.
+
+Luồng ảnh đã thay thế cách rewrite ảnh trực tiếp: POST /api/articles/{id}/visual-context dùng Bonsai Mode=read-image, chỉ phiên âm/mô tả, không giải nghĩa. UI cho sửa ghi chú, bắt xác nhận. CreateDraft rewrite có ảnh yêu cầu visualContextConfirmed + imageFingerprint khớp SHA256 của caption và bytes ảnh hiện tại. Chặn [không rõ]; ghi chú tối đa 8000 ký tự. Sau xác nhận chỉ gửi caption + ghi chú đã sửa cho Bonsai (không gửi lại ảnh để tránh OCR lại sai), nhiệt độ 0.3. Draft lưu rewriteVisualContext, rewriteImageFingerprint, rewriteVisualConfirmedAt. Đây là xác nhận của người thao tác, không phải chứng nhận ảnh đúng tự động. Không tự xác nhận thay người dùng ngoài tác vụ kiểm thử được cho phép.
+
+Giọng rewrite: ưu tiên tone/audience/writingStyle/CTA/name riêng của kênh rồi fallback brand. Giữ đồng thời dữ kiện đúng và cách viết riêng; ẩn dụ là lối nói, không phải dữ kiện mới. Chỉ kênh có tone tech mới gợi ẩn dụ lập trình. Yêu cầu hook, đoạn ngắn, emoji phù hợp, lựa chọn đúng ảnh, CTA và hashtag; không đưa ghi chú OCR/xác nhận vào caption. Không khôi phục Markdown.

@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.Cookies;
 
@@ -18,6 +19,10 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
 });
 builder.Services.AddAuthorization();
 builder.Services.AddControllers();
+builder.Services.AddRateLimiter(options => {
+    options.RejectionStatusCode=429;
+    options.AddFixedWindowLimiter("remote-ai", o => { o.PermitLimit=30;o.Window=TimeSpan.FromMinutes(1);o.QueueLimit=0; });
+});
 builder.Services.AddScoped<IProjectRepository, ProjectRepository>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IRecordsService, RecordsService>();

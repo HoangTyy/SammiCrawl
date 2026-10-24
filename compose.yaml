@@ -16,15 +16,25 @@ services:
       interval: 10s
       timeout: 5s
       retries: 30
+  ai-tunnel:
+    profiles: ["ai-host"]
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run --token-file /run/secrets/stuxd-token
+    volumes:
+      - ./config/stuxd-tunnel-token.local.env:/run/secrets/stuxd-token:ro
+    restart: unless-stopped
   app:
     build: .
     environment:
-      ASPNETCORE_URLS: http://+:8080
+      ASPNETCORE_URLS: "http://+:8080;http://+:8081"
       WorkerApiKey: ${WORKER_API_KEY:-}
       RemoteAiKey: ${REMOTE_AI_KEY:-}
-      Ollama__BaseUrl: http://host.docker.internal:11434
+      Ollama__BaseUrl: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      RemoteAi__BaseUrl: ${REMOTE_AI_BASE_URL:-}
+      RemoteAi__ApiKey: ${REMOTE_AI_API_KEY:-}
     ports:
       - '127.0.0.1:5080:8080'
+      - '127.0.0.1:5081:8081'
     volumes:
       - sammicrawl_keys:/root/.aspnet/DataProtection-Keys
       - sammicrawl_media:/app/wwwroot/media

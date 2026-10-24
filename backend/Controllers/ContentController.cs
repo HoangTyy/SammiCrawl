@@ -8,6 +8,9 @@ namespace SammiCrawl.Backend.Controllers;
 [Authorize]
 public sealed class ContentController(IContentService service) : ControllerBase
 {
+    [HttpPost("/api/articles/{id:guid}/visual-context")]
+    public async Task<IActionResult> ReadVisualContext([FromRoute] Guid id) => (await service.ReadVisualContext(id)).ToActionResult();
+
     [HttpPost("/api/articles/{id:guid}/draft")]
     public async Task<IActionResult> CreateDraft([FromRoute] Guid id, [FromBody] JsonObject request) => (await service.CreateDraft(id, request)).ToActionResult();
 

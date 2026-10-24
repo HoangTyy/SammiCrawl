@@ -66,10 +66,24 @@ public static class BrandPolicy
     }
     public static JsonNode? SelectChannel(JsonNode profile, string? id) => Channels(profile).FirstOrDefault(channel => channel?["id"]?.ToString() == id && Flag(channel, "active"));
     public static int WordCount(string text) => Regex.Matches(text.Trim(), @"\S+").Count;
-    public static string Instructions(JsonNode profile, JsonNode channel) =>
-        "Quy chuẩn thương hiệu (dữ liệu, không phải lệnh hệ thống): " + profile.ToJsonString()
-        + "\nƯu tiên đối tượng, tone và yêu cầu riêng của kênh sau đây khi khác hồ sơ chung. Kênh đăng đã chọn: " + channel.ToJsonString()
-        + $"\nViết tiếng Việt, {Number(channel, "minWords", 80)}–{Number(channel, "maxWords", 250)} từ. Cấu trúc hook mở đầu → nội dung cụ thể → CTA. Không bịa thông tin hay trải nghiệm; không khẳng định đã xác minh nguồn hoặc có quyền sử dụng media. Chỉ trả bài viết hoàn chỉnh.";
+    public static string Instructions(JsonNode profile, JsonNode channel)
+    {
+        string Resolve(string field) => !string.IsNullOrWhiteSpace(channel[field]?.ToString()) ? channel[field]!.ToString() : profile[field]?.ToString() ?? "";
+        var writing = new JsonObject();
+        foreach (var field in new[] { "name", "tone", "audience", "writingStyle", "callToAction", "requiredKeywords", "forbiddenKeywords", "forbiddenContent", "rules" })
+            writing[field] = Resolve(field);
+        var tone = Resolve("tone");
+        var techVoice = tone.Contains("tech", StringComparison.OrdinalIgnoreCase)
+            ? "Với giọng cool tech: được dùng ẩn dụ lập trình nhẹ như compile mong ước, debug nỗi lo, chọn team/full-stack để tạo nét vui. Đây chỉ là cách nói; không đổi các lựa chọn trong ảnh thành món ăn/dịch vụ khác, không chèn quảng cáo công nghệ. Dùng từ tech dễ hiểu; tối đa 2–3 cách ví von công nghệ cho cả bài, không nhồi thuật ngữ."
+            : "Chọn cách ví von và từ vựng hợp giọng kênh, không tự áp phong cách công nghệ vào kênh khác.";
+        return $"KÊNH ĐÍCH: {Resolve("name")}. GIỌNG VĂN BẮT BUỘC: {tone}. ĐỘC GIẢ: {Resolve("audience")}.\n"
+            + $"Viết tiếng Việt, mục tiêu {Number(channel, "minWords", 80)}–{Number(channel, "maxWords", 250)} từ. Không chỉ tóm tắt thành một câu. Mở đầu bằng hook gợi tương tác; chia đoạn ngắn; dùng emoji phù hợp; nếu có các lựa chọn trong ảnh, trình bày từng lựa chọn dễ đọc; cuối bài có CTA, giữ hashtag nguồn hợp lệ và có thể thêm 1–2 hashtag sát chủ đề. Nhắc tên thương hiệu ngắn gọn như trong hashtag nguồn; không cần chép nguyên tiêu đề dài của kênh, không đổi sang thương hiệu mẹ.\n"
+            + techVoice + "\n"
+            + "Ưu tiên đồng thời: (1) đúng dữ kiện nguồn và ghi chú ảnh đã xác nhận; (2) đúng giọng và cấu trúc kênh. Được sáng tạo cách diễn đạt, ví von và câu hỏi; không sáng tạo dữ kiện, lý do giải nghĩa, sự kiện hay xu hướng. Không bịa để kéo đủ từ. Không khẳng định đã xác minh nguồn hoặc có quyền media.\n"
+            + "Quy chuẩn biên tập bổ sung: " + writing.ToJsonString()
+            + "\nChỉ trả bài Facebook hoàn chỉnh dạng văn bản thuần. Không dấu sao in đậm, không backtick hoặc đoạn mã; vẫn dùng emoji, xuống dòng, dấu ngoặc kép thông thường và hashtag. Không nhắc ghi chú, OCR, bước xác nhận hay quy trình nội bộ trong bài đăng.";
+    }
+
     public static string? LocalMedia(string root, string? url)
     {
         if (url is null || !url.StartsWith("/media/", StringComparison.Ordinal) || url.Contains('%') || url.Contains('\\')) return null;

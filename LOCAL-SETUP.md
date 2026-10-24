@@ -60,7 +60,7 @@ Worker cào local đã nối vào nút Chạy cào bài; nhận bài/ảnh ngu�
 
 ## Bridge LLM cho backend host
 
-`GET /bridge/health`, `POST /bridge/rewrite` yêu cầu Bearer `REMOTE_AI_KEY`. Cloudflare Tunnel có thể trỏ `ollama.khanhdc.id.vn` tới app cổng 5080; không trỏ thẳng Ollama 11434. Hostname/tunnel public chưa cấu hình hoặc xác minh trong dự án này. Giữ rate limit và bảo vệ truy cập khi triển khai public.
+Gateway AI có health/rewrite/evaluate, xác thực Bearer và cổng riêng 5081; không trỏ tunnel tới 5080 hoặc Ollama 11434. Client dùng RemoteAi:BaseUrl và RemoteAi:ApiKey. Xem REMOTE-AI.md; hostname ollama.khanhdc.id.vn đã được cấu hình và kiểm tra HTTPS ngày 24/10/2026.
 
 ## Sao lưu và chuyển dữ liệu
 
