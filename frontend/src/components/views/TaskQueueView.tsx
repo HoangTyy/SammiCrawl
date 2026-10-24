@@ -9,7 +9,6 @@ import {
   Trash2, 
   ExternalLink,
   Plus, 
-  ArrowRight,
   Cpu
 } from 'lucide-react';
 import type { CrawlTask, TaskStatus } from '../../types';
@@ -71,66 +70,14 @@ export const TaskQueueView: React.FC<TaskQueueViewProps> = ({
 
   return (
     <div className="view-container queue-view"><div className="view-header-strip"><h2 className="view-title">Hàng đợi tác vụ<HelpTooltip text="Theo dõi trạng thái và tiến trình các tác vụ thu thập bài viết." /></h2></div>
-      {/* Pipeline Visualizer Strip */}
-      <div className="pipeline-strip-card">
-        <div className="pipeline-header">
-          <span className="pipeline-title">{t.queue.pipelineTitle}</span>
-          <span className="pipeline-tag">{t.queue.pipelineTag}</span>
-        </div>
-
-        <div className="pipeline-steps-row">
-          <div className="pipeline-step-box active">
-            <div className="step-num">01</div>
-            <div className="step-details">
-              <span className="step-name">{t.queue.step1Name}</span>
-              <span className="step-sub">{t.queue.step1Sub}</span>
-            </div>
-          </div>
-          <ArrowRight size={16} className="pipeline-arrow" />
-
-          <div className="pipeline-step-box active">
-            <div className="step-num">02</div>
-            <div className="step-details">
-              <span className="step-name">{t.queue.step2Name}</span>
-              <span className="step-sub">{t.queue.step2Sub}</span>
-            </div>
-          </div>
-          <ArrowRight size={16} className="pipeline-arrow" />
-
-          <div className="pipeline-step-box active">
-            <div className="step-num">03</div>
-            <div className="step-details">
-              <span className="step-name">{t.queue.step3Name}</span>
-              <span className="step-sub">{t.queue.step3Sub}</span>
-            </div>
-          </div>
-          <ArrowRight size={16} className="pipeline-arrow" />
-
-          <div className="pipeline-step-box">
-            <div className="step-num">04</div>
-            <div className="step-details">
-              <span className="step-name">{t.queue.step4Name}</span>
-              <span className="step-sub">{t.queue.step4Sub}</span>
-            </div>
-          </div>
-          <ArrowRight size={16} className="pipeline-arrow" />
-
-          <div className="pipeline-step-box">
-            <div className="step-num">05</div>
-            <div className="step-details">
-              <span className="step-name">{t.queue.step5Name}</span>
-              <span className="step-sub">{t.queue.step5Sub}</span>
-            </div>
-          </div>
-        </div>
-      </div>
+      <div className="config-notice">Đây là các lượt cào bài, tách biệt với bản nháp chờ duyệt. Tác vụ tạm dừng sau khi khởi động lại sẽ không tự chạy tiếp.</div>
 
       {/* Queue Table Card */}
       <div className="cyber-panel queue-table-panel">
         <div className="panel-header-line">
           <div className="panel-title-group">
             <Activity size={16} className="text-cyan" />
-            <h3 className="panel-title-text">{t.queue.queueTitle} ({tasks.length})</h3>
+            <h3 className="panel-title-text">Lượt cào bài ({tasks.length})</h3>
           </div>
 
           <div className="queue-controls-right">
@@ -140,6 +87,7 @@ export const TaskQueueView: React.FC<TaskQueueViewProps> = ({
                 { id: 'all', label: t.queue.filterAll },
                 { id: 'running', label: t.queue.filterRunning },
                 { id: 'pending', label: t.queue.filterPending },
+                { id: 'paused', label: 'Tạm dừng' },
                 { id: 'completed', label: t.queue.filterCompleted },
                 { id: 'failed', label: t.queue.filterFailed }
               ].map(tab => (
@@ -151,13 +99,14 @@ export const TaskQueueView: React.FC<TaskQueueViewProps> = ({
                   className={`filter-btn-cyber ${activeFilter === tab.id ? 'active' : ''}`}
                   onClick={() => setActiveFilter(tab.id)}
                 >
-                  {tab.label}
+                  {tab.label} <span className="queue-filter-count">{tab.id === 'all' ? tasks.length : tasks.filter(task => task.status === tab.id).length}</span>
                 </button>
               ))}
             </div>
 
             <input
               type="text"
+              aria-label="Tìm tác vụ theo tên hoặc URL"
               placeholder={t.queue.searchPlaceholder}
               value={searchKey}
               onChange={(e) => setSearchKey(e.target.value)}
@@ -170,7 +119,7 @@ export const TaskQueueView: React.FC<TaskQueueViewProps> = ({
               onClick={onNavigateToStudio}
             >
               <Plus size={14} />
-              <span>{t.queue.btnCreateMission}</span>
+              <span>Cào bài mới</span>
             </button>
           </div>
         </div>
@@ -184,8 +133,8 @@ export const TaskQueueView: React.FC<TaskQueueViewProps> = ({
               <Cpu size={32} className="radar-icon-center" />
             </div>
 
-            <h4 className="empty-heading">{t.queue.emptyHeading}</h4>
-            <p className="empty-sub">{t.queue.emptySub}</p>
+            <h4 className="empty-heading">{tasks.length ? 'Không có tác vụ phù hợp' : t.queue.emptyHeading}</h4>
+            <p className="empty-sub">{tasks.length ? 'Thử đổi trạng thái hoặc từ khóa tìm kiếm.' : t.queue.emptySub}</p>
 
             <button 
               type="button" 
@@ -193,7 +142,7 @@ export const TaskQueueView: React.FC<TaskQueueViewProps> = ({
               onClick={onNavigateToStudio}
             >
               <Plus size={15} />
-              <span>{t.queue.btnNewFromStudio}</span>
+              <span>Tạo lượt cào mới</span>
             </button>
           </div>
         ) : (
@@ -202,10 +151,10 @@ export const TaskQueueView: React.FC<TaskQueueViewProps> = ({
               <thead>
                 <tr>
                   <th>{t.queue.colTarget}</th>
-                  <th>{t.queue.colType}</th>
-                  <th>{t.queue.colWorker}</th>
+                  <th>Nguồn</th>
+                  <th>Tài nguyên</th>
                   <th>{t.queue.colProgress}</th>
-                  <th>{t.queue.colLatency}</th>
+                  <th>Bỏ qua trùng</th>
                   <th>{t.queue.colStatus}</th>
                   <th className="text-right">{t.queue.colActions}</th>
                 </tr>
@@ -213,7 +162,7 @@ export const TaskQueueView: React.FC<TaskQueueViewProps> = ({
               <tbody>
                 {filteredTasks.map(task => (
                   <tr key={task.id}>
-                    <td>
+                    <td data-label="Mục tiêu Facebook">
                       <div className="table-target-wrap">
                         <span className="target-title-main">{task.targetName}</span>
                         <a 
@@ -224,16 +173,16 @@ export const TaskQueueView: React.FC<TaskQueueViewProps> = ({
                         >
                           {task.url} <ExternalLink size={10} />
                         </a>
-                        {task.errorReason&&<small className="task-worker-message">{task.errorReason}</small>}
+                        {task.errorReason&&<small className="task-worker-message">{task.errorCode ? `${task.errorCode}: ` : ''}{task.errorReason}</small>}
                       </div>
                     </td>
-                    <td>
+                    <td data-label="Nguồn">
                       <span className="chip-target-type">{task.targetType.toUpperCase()}</span>
                     </td>
-                    <td>
+                    <td data-label="Tài nguyên">
                       <span className="worker-node-tag">{task.workerNode}</span>
                     </td>
-                    <td>
+                    <td data-label="Tiến độ">
                       <div className="progress-cyber-wrap">
                         <div className="progress-cyber-bar">
                           <div 
@@ -244,16 +193,16 @@ export const TaskQueueView: React.FC<TaskQueueViewProps> = ({
                         <span className="progress-num">{task.crawledPosts}/{task.maxPosts} ({task.progress}%)</span>
                       </div>
                     </td>
-                    <td>
-                      <span className="latency-text">{task.latencyMs}ms</span>
+                    <td data-label="Bỏ qua trùng">
+                      <span className="latency-text">{task.duplicatesSkipped ?? 0} bài</span>
                     </td>
-                    <td>{getStatusBadge(task.status)}</td>
-                    <td className="text-right">
+                    <td data-label="Trạng thái">{getStatusBadge(task.status)}</td>
+                    <td data-label="Thao tác" className="text-right">
                       <button 
                         type="button" 
                         className="btn-delete-cyber"
                         onClick={() => onDeleteTask(task.id)}
-                        title="Delete task"
+                        title="Xóa tác vụ"
                       >
                         <Trash2 size={14} />
                       </button>

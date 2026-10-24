@@ -37,7 +37,14 @@ Các đường dẫn frontend viết tắt ở trên đều tính từ `frontend
 
 ## Menu hiện tại
 
-Báo cáo tổng quan · Cào bài · Hàng đợi tác vụ · Bài viết & duyệt đăng · Kênh đăng · Tài khoản Facebook · Thương hiệu · Mẫu cấu hình cào bài · Thùng rác.
+Menu hai tầng, giữ nguyên NavigationTab và API:
+- Tổng quan → Báo cáo tổng quan.
+- Thu thập → Cào bài, Hàng đợi tác vụ, Mẫu cấu hình cào bài.
+- Nội dung → Bài viết & duyệt đăng, Kênh đăng.
+- Quản lý → Thương hiệu, Tài khoản Facebook.
+- Thùng rác → giữ các danh mục khôi phục bên trong.
+
+Chọn nhóm mở màn hình đầu tiên của nhóm, chọn lại nhóm hiện tại không reset màn hình con. Bản nháp lọc theo trạng thái backend thực và kênh snapshot; không bổ sung trạng thái chỉ để giống công cụ tham khảo. Tài liệu nghiên cứu/đối chiếu nguồn: docs/research/SAMMICRAWL-RESEARCH.md.
 
 Không còn tab Nội dung AI hoặc AI Rewriter riêng: quản lý repost/rewrite trong **Bản nháp & lịch đăng** thuộc Bài viết & duyệt đăng. Không đưa lại tên Không gian dự án hoặc hai ô Tổng thương hiệu/Kênh đăng trên trang thương hiệu. Mô tả tiêu đề dùng tooltip (!), không để đoạn hướng dẫn dài ngay dưới tiêu đề.
 
@@ -119,3 +126,5 @@ Rewrite có ảnh: ContentService đọc tối đa 4 file JPG/PNG/WebP local, 5 
 Luồng ảnh đã thay thế cách rewrite ảnh trực tiếp: POST /api/articles/{id}/visual-context dùng Bonsai Mode=read-image, chỉ phiên âm/mô tả, không giải nghĩa. UI cho sửa ghi chú, bắt xác nhận. CreateDraft rewrite có ảnh yêu cầu visualContextConfirmed + imageFingerprint khớp SHA256 của caption và bytes ảnh hiện tại. Chặn [không rõ]; ghi chú tối đa 8000 ký tự. Sau xác nhận chỉ gửi caption + ghi chú đã sửa cho Bonsai (không gửi lại ảnh để tránh OCR lại sai), nhiệt độ 0.3. Draft lưu rewriteVisualContext, rewriteImageFingerprint, rewriteVisualConfirmedAt. Đây là xác nhận của người thao tác, không phải chứng nhận ảnh đúng tự động. Không tự xác nhận thay người dùng ngoài tác vụ kiểm thử được cho phép.
 
 Giọng rewrite: ưu tiên tone/audience/writingStyle/CTA/name riêng của kênh rồi fallback brand. Giữ đồng thời dữ kiện đúng và cách viết riêng; ẩn dụ là lối nói, không phải dữ kiện mới. Chỉ kênh có tone tech mới gợi ẩn dụ lập trình. Yêu cầu hook, đoạn ngắn, emoji phù hợp, lựa chọn đúng ảnh, CTA và hashtag; không đưa ghi chú OCR/xác nhận vào caption. Không khôi phục Markdown.
+
+UI responsive: <=600px bảng bài/tác vụ/kênh/tài khoản hiển thị thẻ có nhãn; desktop giữ bảng. useDialogKeyboard.ts dùng chung cho modal, giữ Tab trong modal, inert nền, Escape trừ busy và trả focus về nút mở. Giữ cơ chế này khi sửa modal. Mẫu cấu hình chỉ trình bày tham số cào worker dùng; lựa chọn Repost/Rewrite nằm sau bước thu thập.

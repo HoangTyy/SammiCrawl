@@ -62,19 +62,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 className="btn-ghost-cyan" 
                 onClick={onNavigateToStudio}
               >
-                <span>{t.dashboard.quickStudioMode}</span>
+                <span>Mở form cào bài</span>
                 <ArrowUpRight size={14} />
               </button>
             </div>
 
             <p className="panel-desc-text">
-              {t.dashboard.quickDesc}
+              Điền URL nguồn để mở cấu hình thu thập. Tác vụ chỉ chạy khi bạn bấm Chạy cào bài trong form.
             </p>
 
             <form onSubmit={handleQuickSubmit} className="quick-dispatch-form">
               <div className="dispatch-input-row">
                 <input
                   type="url"
+                  aria-label="URL Facebook nguồn cho cấu hình nhanh"
                   placeholder={t.dashboard.urlPlaceholder}
                   value={quickUrl}
                   onChange={(e) => setQuickUrl(e.target.value)}
@@ -83,7 +84,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 />
                 <button type="submit" className="btn-dispatch-submit">
                   <Send size={15} />
-                  <span>{t.dashboard.btnDeploy}</span>
+                  <span>Điền cấu hình</span>
                 </button>
               </div>
 

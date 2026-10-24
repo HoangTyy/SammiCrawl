@@ -34,17 +34,24 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   const { theme, toggleTheme, language, toggleLanguage, t } = useApp();
 
-  const tabs = [
-    { id: 'dashboard' as NavigationTab, label: 'Báo cáo tổng quan', icon: LayoutGrid },
-    { id: 'crawler-studio' as NavigationTab, label: 'Cào bài', icon: Terminal },
-    { id: 'queue' as NavigationTab, label: 'Hàng đợi tác vụ', icon: Activity },
-    { id: 'data-vault' as NavigationTab, label: 'Bài viết & duyệt đăng', icon: Database },
-    { id: 'channels' as NavigationTab, label: 'Kênh đăng', icon: Radio },
-    { id: 'facebook-accounts' as NavigationTab, label: 'Tài khoản Facebook', icon: ShieldCheck },
-    { id: 'proxy-stealth' as NavigationTab, label: 'Thương hiệu', icon: Building2 },
-    { id: 'crawl-presets' as NavigationTab, label: 'Mẫu cấu hình cào bài', icon: Bookmark },
-    { id: 'trash' as NavigationTab, label: 'Thùng rác', icon: Trash2 }
-  ];
+  const groups = [
+    { label: 'Tổng quan', icon: LayoutGrid, tabs: [{ id: 'dashboard', label: 'Báo cáo tổng quan', icon: LayoutGrid }] },
+    { label: 'Thu thập', icon: Terminal, tabs: [
+      { id: 'crawler-studio', label: 'Cào bài', icon: Terminal },
+      { id: 'queue', label: 'Hàng đợi tác vụ', icon: Activity },
+      { id: 'crawl-presets', label: 'Mẫu cấu hình cào bài', icon: Bookmark }
+    ] },
+    { label: 'Nội dung', icon: Database, tabs: [
+      { id: 'data-vault', label: 'Bài viết & duyệt đăng', icon: Database },
+      { id: 'channels', label: 'Kênh đăng', icon: Radio }
+    ] },
+    { label: 'Quản lý', icon: Building2, tabs: [
+      { id: 'proxy-stealth', label: 'Thương hiệu', icon: Building2 },
+      { id: 'facebook-accounts', label: 'Tài khoản Facebook', icon: ShieldCheck }
+    ] },
+    { label: 'Thùng rác', icon: Trash2, tabs: [{ id: 'trash', label: 'Thùng rác', icon: Trash2 }] }
+  ] satisfies { label: string; icon: typeof LayoutGrid; tabs: { id: NavigationTab; label: string; icon: typeof LayoutGrid }[] }[];
+  const activeGroup = groups.find(group => group.tabs.some(tab => tab.id === currentTab)) ?? groups[0];
 
   return (
     <header className="cyber-navbar">
@@ -63,24 +70,21 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
       </div>
 
-      <nav className="navbar-center-tabs">
-        {tabs.map(tab => {
-          const Icon = tab.icon;
-          const isActive = currentTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              className={`cyber-tab-btn ${isActive ? 'active' : ''}`}
-              onClick={() => onSelectTab(tab.id)}
-            >
-              <Icon size={15} className="tab-icon" />
-              <span className="tab-label">{tab.label}</span>
-              {isActive && <div className="tab-active-glow"></div>}
-            </button>
-          );
-        })}
-      </nav>
+      <div className="app-navigation">
+        <nav className="workspace-nav-groups" aria-label="Nhóm công cụ">
+          {groups.map(group => {
+            const Icon = group.icon;
+            const active = group === activeGroup;
+            return <button key={group.label} type="button" className={`workspace-group-button ${active ? 'active' : ''}`} aria-pressed={active} onClick={() => { if (!active) onSelectTab(group.tabs[0].id); }}><Icon size={16} aria-hidden="true"/><span>{group.label}</span></button>;
+          })}
+        </nav>
+        {activeGroup.tabs.length > 1 && <nav className="workspace-nav-pages" aria-label={`Công cụ ${activeGroup.label.toLowerCase()}`}>
+          {activeGroup.tabs.map(tab => {
+            const Icon = tab.icon;
+            return <button key={tab.id} type="button" className={`workspace-page-button ${currentTab === tab.id ? 'active' : ''}`} aria-current={currentTab === tab.id ? 'page' : undefined} onClick={() => onSelectTab(tab.id)}><Icon size={15} aria-hidden="true"/>{tab.label}</button>;
+          })}
+        </nav>}
+      </div>
 
       <div className="navbar-right">
         {/* Language Switcher */}
@@ -122,7 +126,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           onClick={onOpenMissionModal}
         >
           <Plus size={15} />
-          <span>{t.navbar.launchMission}</span>
+          <span>Cào bài mới</span>
         </button>
       </div>
     </header>
