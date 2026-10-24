@@ -12,6 +12,7 @@ public interface IAccountsService
 {
     Task<ServiceResult> Update(Guid id, JsonObject data);
     Task<ServiceResult> Check(Guid id);
+    Task<ServiceResult> RevealSession(Guid id);
     Task<ServiceResult> RuntimeError(Guid id, RuntimeAccountError error, HttpContext ctx);
 }
 
@@ -31,6 +32,15 @@ public sealed class AccountsService(IProjectRepository db, IDataProtectionProvid
         data["sessionStatus"] = original["sessionStatus"]?.ToString() ?? "Chưa kết nối";
         if (!string.IsNullOrWhiteSpace(cookie)) { record.ProtectedSecret = protection.CreateProtector("FacebookSession.v1").Protect(cookie); data["sessionStatus"] = "Đã lưu phiên · chưa kiểm tra"; }
         record.Json = data.ToJsonString(); db.AddLog(new Audit { Message = $"Đã cập nhật tài khoản Facebook · {id}" }); await db.SaveChangesAsync(); if (!string.IsNullOrWhiteSpace(cookie)) return ServiceResult.Ok(await health.CheckAndSave(id, db)); return ServiceResult.Ok(data);
+    }
+
+    public async Task<ServiceResult> RevealSession(Guid id)
+    {
+        var record = await db.FindDocumentAsync(id, "accounts");
+        if (record is null || JsonNode.Parse(record.Json)?["deletedAt"] is not null) return ServiceResult.NotFound();
+        if (string.IsNullOrEmpty(record.ProtectedSecret)) return ServiceResult.Ok(new { cookie = "" });
+        try { return ServiceResult.Ok(new { cookie = protection.CreateProtector("FacebookSession.v1").Unprotect(record.ProtectedSecret) }); }
+        catch { return ServiceResult.Conflict(new { error = "Không giải mã được phiên đã lưu." }); }
     }
 
     public async Task<ServiceResult> Check(Guid id)

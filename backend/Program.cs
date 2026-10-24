@@ -22,6 +22,7 @@ builder.Services.AddScoped<IProjectRepository, ProjectRepository>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IRecordsService, RecordsService>();
 builder.Services.AddScoped<IAccountsService, AccountsService>();
+builder.Services.AddScoped<FacebookLoginService>();
 builder.Services.AddScoped<ISystemService, SystemService>();
 builder.Services.AddScoped<IWorkflowsService, WorkflowsService>();
 builder.Services.AddScoped<IContentService, ContentService>();

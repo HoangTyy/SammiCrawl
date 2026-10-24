@@ -46,7 +46,7 @@ Không có đăng ký công khai. `/api/auth/setup` chỉ tạo quản trị vi�
 - `Infrastructure/`: middleware xác thực bridge/worker, xử lý lỗi và công cụ chuyển dữ liệu SQL Server → PostgreSQL.
 - `Program.cs`: cấu hình, đăng ký DI và khởi động; không chứa nghiệp vụ API.
 
-URL API giữ nguyên để frontend tiếp tục sử dụng. Bí mật Facebook được mã hóa bằng Data Protection, không trả cookie đã lưu về browser. Giữ volume `sammicrawl_keys` khi chuyển host để giải mã phiên cũ.
+URL API giữ nguyên để frontend tiếp tục sử dụng. Bí mật Facebook được mã hóa bằng Data Protection, chỉ trả cookie đã lưu khi người dùng đăng nhập dự án chủ động bấm Hiện cookie; response no-store. Giữ volume `sammicrawl_keys` khi chuyển host để giải mã phiên cũ.
 
 ## Khả năng hiện tại
 
@@ -85,3 +85,7 @@ GET /api/reports/content?date=yyyy-MM-dd thống kê từng kênh và lịch d�
 Menu Kênh đăng đọc chung channels trong hồ sơ thương hiệu, không nhân bản kênh. Có tìm kiếm/lọc thương hiệu, Group/Page, trạng thái; thêm/sửa/ngưng/bật lại và gán tài khoản role=publish đang được bật. Tình trạng Facebook của tài khoản hiển thị riêng với quyền đăng trên kênh (chưa xác minh). Không có thao tác đăng bài hoặc kiểm tra quyền Facebook trong trang này.
 
 GET /api/channels; POST /api/brands/{brandId}/channels; PUT /api/brands/{brandId}/channels/{channelId}. Kênh dùng ID ổn định; ngưng không xóa lịch sử. Tài khoản phụ trách trở thành lựa chọn mặc định trong bản nháp mới, người duyệt vẫn có thể chọn tài khoản đăng hợp lệ khác. Lưu hồ sơ/kênh dùng kiểm tra phiên bản và ghi có điều kiện để tránh ghi đè thay đổi đồng thời. Dữ liệu 14 kênh hiện có được giữ nguyên, không tự gán tài khoản.
+
+## Kết nối tài khoản Facebook qua backend
+
+POST /api/accounts/{id}/login (đã đăng nhập dự án), body email/password, thử đăng nhập trong Chromium của backend rồi lưu cookie bằng Data Protection nếu Facebook cấp phiên và UID khớp. Mật khẩu không được lưu. Kết quả phải qua kiểm tra phiên thật; checkpoint/CAPTCHA không được tự giải. Phiên trình duyệt cá nhân không tự đồng bộ vào container. Endpoint này không cung cấp worker cào/đăng.

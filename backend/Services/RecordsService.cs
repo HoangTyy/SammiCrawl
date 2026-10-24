@@ -94,7 +94,7 @@ public sealed class RecordsService(IProjectRepository db, IDataProtectionProvide
 
     public async Task<ServiceResult> Update(string kind, Guid id, JsonObject data)
     {
-        if (kind is not ("brands" or "presets" or "rewrites")) return ServiceResult.NotFound();
+        if (kind is not ("brands" or "presets" or "rewrites" or "accounts")) return ServiceResult.NotFound();
         var record = await db.FindDocumentAsync(id, kind);
         if (record is null) return ServiceResult.NotFound();
         var original = JsonNode.Parse(record.Json)!.AsObject();
@@ -130,15 +130,15 @@ public sealed class RecordsService(IProjectRepository db, IDataProtectionProvide
 
     public async Task<ServiceResult> Delete(string kind, Guid id)
     {
-        if (kind is not ("brands" or "presets" or "rewrites")) return ServiceResult.NotFound();
+        if (kind is not ("brands" or "presets" or "rewrites" or "accounts")) return ServiceResult.NotFound();
         var record = await db.FindDocumentAsync(id, kind); if (record is null) return ServiceResult.NotFound();
-        var data = JsonNode.Parse(record.Json)!; data["deletedAt"] = DateTimeOffset.UtcNow.ToString("O"); record.Json = data.ToJsonString();
+        var data = JsonNode.Parse(record.Json)!; data["deletedAt"] = DateTimeOffset.UtcNow.ToString("O"); if (kind == "accounts") data["enabled"] = false; record.Json = data.ToJsonString();
         db.AddLog(new Audit { Message = $"Đã chuyển {kind} vào thùng rác · {id}" }); await db.SaveChangesAsync(); return ServiceResult.Ok();
     }
 
     public async Task<ServiceResult> Restore(string kind, Guid id)
     {
-        if (kind is not ("brands" or "presets" or "rewrites")) return ServiceResult.NotFound();
+        if (kind is not ("brands" or "presets" or "rewrites" or "accounts")) return ServiceResult.NotFound();
         var record = await db.FindDocumentAsync(id, kind); if (record is null) return ServiceResult.NotFound();
         var data = JsonNode.Parse(record.Json)!.AsObject(); data.Remove("deletedAt"); record.Json = data.ToJsonString();
         db.AddLog(new Audit { Message = $"Đã khôi phục {kind} · {id}" }); await db.SaveChangesAsync(); return ServiceResult.Ok(data);

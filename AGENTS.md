@@ -24,7 +24,7 @@ Không biến giao diện thành wizard nhiều bước. Không tự rewrite/đ�
 - `ChannelsView.tsx`: Group/Page theo thương hiệu và tài khoản đăng mặc định.
 - `FacebookAccountsView.tsx`: tài khoản, vai trò, trạng thái và lỗi phiên Facebook.
 - `WorkspaceView.tsx`: dùng chung màn hình thương hiệu/mẫu cấu hình và chế độ thùng rác.
-- `TrashView.tsx`: tab con thương hiệu/mẫu cấu hình; khôi phục, không có xóa vĩnh viễn.
+- `TrashView.tsx`: tab con thương hiệu/mẫu cấu hình/tài khoản Facebook; khôi phục, không có xóa vĩnh viễn.
 - `TaskQueueView.tsx`, `DashboardView.tsx`, `components/ContentReport.tsx`: hàng đợi/báo cáo.
 - `src/brandPolicy.ts`, `components/BrandProfileEditor.tsx`: hồ sơ và quy chuẩn kênh.
 - `src/components/HelpTooltip.tsx`: icon (!) cho hướng dẫn tiêu đề, hiện khi hover/focus. `src/App.css`: CSS hiện tại.
@@ -88,6 +88,7 @@ Xem Controllers để biết method/body/auth chính xác:
 - `/api/crawl/start`.
 - `/api/articles/{id}/evaluate`, `/api/articles/{id}/draft`; `/api/drafts/{id}` và thao tác duyệt trong ContentController.
 - `/api/reports/content?date=yyyy-MM-dd`.
+- `/api/accounts/{id}/login`: email/password tạm thời, cookie mã hóa khi đăng nhập và kiểm tra thành công; không lưu password, không tự giải xác minh.
 - `/api/accounts/{id}/runtime-error`: Bearer WORKER_API_KEY, phải gắn đúng job/account.
 - `/bridge/health`, `/bridge/rewrite`: Bearer REMOTE_AI_KEY.
 

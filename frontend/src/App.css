@@ -2010,3 +2010,6 @@
 .queue-view .filter-btn-cyber.active[data-status=completed] { color:#15936a; border-color:rgba(21,147,106,.3); }
 .queue-view .filter-btn-cyber.active[data-status=failed] { color:#e05264; border-color:rgba(224,82,100,.3); }
 @media(max-width:600px) { .queue-controls-right { width:100%; } .queue-view .cyber-filter-pill-group { width:100%; } .queue-view .filter-btn-cyber { flex:1; padding:8px; min-width:42px; } }
+
+.account-delete-button { color:#dc5265; }
+.account-delete-button:hover { background:rgba(220,82,101,.1); border-color:rgba(220,82,101,.3); }
