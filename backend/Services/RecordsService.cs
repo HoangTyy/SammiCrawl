@@ -86,6 +86,7 @@ public sealed class RecordsService(IProjectRepository db, IDataProtectionProvide
             data["workerNode"] = "Chờ cài worker"; data["ipAddress"] = "—"; data["latencyMs"] = 0;
         }
         var id = Guid.NewGuid(); data["id"] = id.ToString(); data["createdAt"] = DateTimeOffset.UtcNow.ToString("O");
+        if (kind == "accounts") { var sessionError = FacebookSessionInput.Normalize(data); if (sessionError is not null) return ServiceResult.BadRequest(new { error = sessionError }); }
         string? secret = data["cookie"]?.ToString(); data.Remove("cookie");
         if (kind == "accounts") data["sessionStatus"] = string.IsNullOrEmpty(secret) ? "Chưa kết nối" : "Đã lưu phiên · chưa kiểm tra";
         db.AddDocument(new Document { Id = id, Kind = kind, Json = data.ToJsonString(), ProtectedSecret = string.IsNullOrEmpty(secret) ? null : protection.CreateProtector("FacebookSession.v1").Protect(secret) });

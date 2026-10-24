@@ -129,7 +129,7 @@ public sealed class ContentService(IProjectRepository db, AiRunner ai, IWebHostE
         if (!ai.TryAcquire()) return ServiceResult.Conflict(new { error = "AI đang bận. Chỉ chạy một model mỗi lần." });
         try
         {
-            var images = new List<string>(); var warnings = new List<string>();
+            var images = new List<string>(); var warnings = (article["mediaWarnings"] as JsonArray ?? new JsonArray()).Select(n => n!.ToString()).ToList();
             foreach (var media in article["media"] as JsonArray ?? new JsonArray())
             {
                 if (media?["type"]?.ToString() == "video") { warnings.Add("Video chưa được phân tích khung hình; cần xem thủ công."); continue; }
@@ -137,7 +137,9 @@ public sealed class ContentService(IProjectRepository db, AiRunner ai, IWebHostE
                 if (path is null || !new[] { ".jpg", ".jpeg", ".png", ".webp" }.Contains(Path.GetExtension(path).ToLowerInvariant()) || new FileInfo(path).Length > 5_000_000 || images.Count >= 4) { warnings.Add("Có media chưa phân tích được; cần xem thủ công."); continue; }
                 images.Add(Convert.ToBase64String(await File.ReadAllBytesAsync(path)));
             }
-            var result = await ai.Evaluate(source, profile, images);
+            var evaluationProfile=profile.DeepClone();
+            if(!string.IsNullOrWhiteSpace(article["crawlTopicDescription"]?.ToString()))evaluationProfile["rules"]=(profile["rules"]?.ToString()??"")+"\nChủ đề yêu cầu của lượt thu thập: "+article["crawlTopicDescription"]!.ToString();
+            var result = await ai.Evaluate(source, evaluationProfile, images);
             var resultWarnings = result["warnings"]!.AsArray().Select(node => node!.ToString()).Concat(warnings).Distinct().ToArray();
             article["aiStatus"] = warnings.Count > 0 && result["status"]!.ToString() == "recommended" ? "review" : result["status"]!.ToString();
             article["aiDecision"] = result["decision"]?.DeepClone(); article["aiScore"] = result["score"]!.DeepClone(); article["aiReason"] = result["reason"]!.ToString(); article["aiTopic"] = result["topic"]!.ToString();

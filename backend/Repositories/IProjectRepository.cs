@@ -2,6 +2,7 @@ namespace SammiCrawl.Backend.Repositories;
 
 public interface IProjectRepository
 {
+    Task<(Document Record, bool Duplicate, string? Reason)> IngestArticleAsync(Guid brandId, System.Text.Json.Nodes.JsonObject article);
     Task<Document?> FindDocumentAsync(Guid id, string kind);
     Task<Document?> FindJobAsync(Guid id);
     Task<List<Document>> ListDocumentsAsync(string kind);

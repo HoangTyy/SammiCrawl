@@ -15,7 +15,7 @@ public interface IWorkflowsService
     Task<ServiceResult> CreateRun(Guid id);
 }
 
-public sealed class WorkflowsService(IProjectRepository db, AiRunner ai) : IWorkflowsService
+public sealed class WorkflowsService(IProjectRepository db, AiRunner ai, FacebookCrawlWorker worker) : IWorkflowsService
 {
     public async Task<ServiceResult> StartCrawl(JsonObject config)
     {
@@ -26,13 +26,18 @@ public sealed class WorkflowsService(IProjectRepository db, AiRunner ai) : IWork
         foreach (var (field, min, max) in new (string, double, double)[] { ("maxPosts", 1, 1000), ("maxScrolls", 1, 2000), ("delayMinMs", 500, 120000), ("delayMaxMs", 500, 120000), ("minLikes", 0, 10000000), ("minComments", 0, 10000000), ("accountPostLimit", 1, 1000), ("accountRestMinMs", 1000, 3600000), ("accountRestMaxMs", 1000, 3600000) })
             if (config[field] is not JsonValue v || !v.TryGetValue<double>(out var n) || n < min || n > max || n != Math.Truncate(n)) return ServiceResult.BadRequest(new { error = $"Thông số {field} không hợp lệ." });
         if (config["delayMinMs"]!.GetValue<double>() > config["delayMaxMs"]!.GetValue<double>() || config["accountRestMinMs"]!.GetValue<double>() > config["accountRestMaxMs"]!.GetValue<double>()) return ServiceResult.BadRequest(new { error = "Khoảng nghỉ min không được lớn hơn max." });
-        var accounts = (await db.ListDocumentsAsync("accounts")).Where(d => { var a = JsonNode.Parse(d.Json); return a?["role"]?.ToString() == "crawl" && a?["enabled"]?.GetValue<bool>() != false && a?["facebookStatus"]?.ToString() is not ("locked" or "checkpoint" or "expired" or "restricted" or "invalid_cookie"); }).ToList();
+        var accounts = (await db.ListDocumentsAsync("accounts")).Where(d => { var a = JsonNode.Parse(d.Json); return a?["deletedAt"] is null && a?["role"]?.ToString() == "crawl" && a?["enabled"]?.GetValue<bool>() != false && a?["facebookStatus"]?.ToString() == "active"; }).ToList();
         if (accounts.Count == 0) return ServiceResult.BadRequest(new { error = "Không có tài khoản cào đủ điều kiện. Kiểm tra tài khoản đang bật và không bị khóa, hết phiên hoặc giới hạn." });
         var missing = accounts.Count(a => string.IsNullOrEmpty(a.ProtectedSecret));
         if (missing > 0) return ServiceResult.BadRequest(new { error = $"Có {missing} tài khoản cào đang bật nhưng chưa có phiên đăng nhập. Cập nhật phiên hoặc tạm ngưng tài khoản đó." });
-        config["crawlAccountIds"] = new JsonArray(accounts.Select(a => JsonValue.Create(a.Id.ToString())).ToArray()); config["extractMedia"] = true; config["targetType"] = "page";
-        db.AddLog(new Audit { Message = $"Chưa khởi chạy cào thương hiệu {brandId}: worker Facebook chưa triển khai; {accounts.Count} tài khoản được chọn tự động." }); await db.SaveChangesAsync();
-        return ServiceResult.Conflict(new { error = $"Chưa thể chạy: worker cào Facebook, tải ảnh/video và Clef lọc nền chưa được triển khai. Đã xác định {accounts.Count} tài khoản cào đang bật; chưa cào hoặc đăng bài nào." });
+        config["crawlAccountIds"] = new JsonArray(accounts.Select(a => JsonValue.Create(a.Id.ToString())).ToArray()); config["extractMedia"] = true; config["targetType"] = url.AbsolutePath.StartsWith("/groups/") ? "group" : "page";
+        if(worker.IsBusy)return ServiceResult.Conflict(new{error="Đang có lượt cào chạy. Chờ hoàn tất hoặc dừng lượt hiện tại."});
+        if(config["includeComments"]?.GetValue<bool>()==true)return ServiceResult.BadRequest(new{error="Worker hiện thu thập bài và media, chưa hỗ trợ bình luận. Bỏ chọn Thu thập bình luận trước khi chạy."});
+        if(config["minLikes"]!.GetValue<int>()>0||config["minComments"]!.GetValue<int>()>0)return ServiceResult.BadRequest(new{error="Bộ lọc tương tác chưa hỗ trợ trên worker hiện tại; đặt tối thiểu về 0."});
+        var id=Guid.NewGuid();config["id"]=id.ToString();config["targetName"]=JsonNode.Parse(brand.Json)?["name"]?.ToString()??brandId.ToString();config["createdAt"]=DateTimeOffset.UtcNow.ToString("O");config["status"]="pending";config["progress"]=0;config["crawledPosts"]=0;config["workerNode"]="Facebook local";config["ipAddress"]="—";config["latencyMs"]=0;
+        var task=new Document{Id=id,Kind="tasks",Json=config.ToJsonString()};db.AddDocument(task);await db.SaveChangesAsync();
+        if(!worker.Enqueue(id)){config["status"]="paused";task.Json=config.ToJsonString();await db.SaveChangesAsync();return ServiceResult.Conflict(new{error="Worker vừa nhận tác vụ khác. Tác vụ mới chưa chạy."});}
+        return ServiceResult.Ok(new{taskId=id,status="pending"});
     }
 
     public async Task<ServiceResult> Preflight(Guid id)

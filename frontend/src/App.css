@@ -2013,3 +2013,5 @@
 
 .account-delete-button { color:#dc5265; }
 .account-delete-button:hover { background:rgba(220,82,101,.1); border-color:rgba(220,82,101,.3); }
+
+.task-worker-message { display:block; max-width:400px; color:var(--text-muted); line-height:1.6; font-size:12px; white-space:normal; margin-top:8px; }

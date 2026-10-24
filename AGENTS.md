@@ -58,7 +58,7 @@ PostgreSQL hiện là database chính, schema `sammicrawl`. Docker SQL Server ch
 
 Đã có CRUD, đăng nhập, lưu PostgreSQL, kiểm tra tài khoản bằng Playwright, gọi AI thủ công, tạo/sửa/duyệt draft và báo cáo. Clef dùng `clef-flash:latest` qua `/v1/systemone` (decision/vision, không phải chat completion). Bonsai dùng `bonsai-2:27b` để rewrite. Xem AiRunner trước khi đổi protocol.
 
-**Chưa có worker cào Facebook, tải/kiểm chứng media hàng loạt, Clef lọc nền, scheduler hay worker xuất bản.** `/api/crawl/start` phải trả lỗi rõ khi thiếu worker, không giả thành công. Duyệt/đặt lịch không được tự đánh dấu published. Video/media chưa phân tích được cần xem thủ công.
+**Đã có worker cào local** từ `/api/crawl/start`: Channel + BackgroundService, một lượt tại một thời điểm, lấy phiên mã hóa của tài khoản cào active, lưu tiến độ và bài qua chống trùng, tải file media Facebook cung cấp rồi đánh giá Clef tuần tự. Chưa có scheduler/worker đăng. Chưa hỗ trợ bình luận/bộ lọc tương tác; không bảo đảm video blob hoặc chất lượng ảnh gốc. Media thiếu phải cảnh báo. Khi restart, lượt dang dở chuyển paused, không tự replay. Duyệt/đặt lịch không phải published. Xem LOCAL-SETUP.md để biết giới hạn.
 
 Một request AI tại một thời điểm qua singleton gate, unload model trước/sau. Không chạy song song Clef và Bonsai. Khóa trong ứng dụng không bảo đảm độc quyền với chương trình khác hoặc nhiều replica.
 
@@ -86,6 +86,7 @@ Xem Controllers để biết method/body/auth chính xác:
 - `/api/records/{kind}`: CRUD/soft-delete; `/{id}/restore`: khôi phục loại được hỗ trợ.
 - `/api/channels`; `/api/brands/{brandId}/channels` và `/{channelId}`.
 - `/api/crawl/start`.
+- `/api/articles/ingest`: nhận bài không media, chống trùng theo thương hiệu + nguồn/nội dung chuẩn hóa, khóa DB trước khi kiểm tra/lưu; trả duplicate và bản đã có. Đây chưa phải worker cào. Xem LOCAL-SETUP.md về phạm vi hiện tại.
 - `/api/articles/{id}/evaluate`, `/api/articles/{id}/draft`; `/api/drafts/{id}` và thao tác duyệt trong ContentController.
 - `/api/reports/content?date=yyyy-MM-dd`.
 - `/api/accounts/{id}/login`: email/password tạm thời, cookie mã hóa khi đăng nhập và kiểm tra thành công; không lưu password, không tự giải xác minh.

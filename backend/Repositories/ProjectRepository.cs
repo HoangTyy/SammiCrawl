@@ -5,6 +5,27 @@ namespace SammiCrawl.Backend.Repositories;
 // One scoped repository shares the EF unit of work across services in each request.
 public sealed class ProjectRepository(Store store) : IProjectRepository
 {
+    public async Task<(Document Record, bool Duplicate, string? Reason)> IngestArticleAsync(Guid brandId, System.Text.Json.Nodes.JsonObject article)
+    {
+        await using var tx = await store.Database.BeginTransactionAsync();
+        // Database lock spans lookup + insert and works across application replicas.
+        var resource = "article-ingest:" + brandId;
+        if (store.Database.IsNpgsql()) await store.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended({resource}, 0))");
+        else await store.Database.ExecuteSqlInterpolatedAsync($"DECLARE @r int; EXEC @r = sp_getapplock @Resource={resource}, @LockMode='Exclusive', @LockOwner='Transaction', @LockTimeout=30000; IF @r < 0 THROW 50001, 'Article lock unavailable', 1;");
+        var records = await store.Documents.Where(d => d.Kind == "articles").AsNoTracking().ToListAsync();
+        foreach (var record in records)
+        {
+            var old = System.Text.Json.Nodes.JsonNode.Parse(record.Json)!.AsObject();
+            if (old["brandId"]?.ToString() != brandId.ToString()) continue;
+            var reason = ArticleDeduplication.Match(article, old);
+            if (reason is not null) { await tx.CommitAsync(); return (record, true, reason); }
+        }
+        var id = Guid.NewGuid(); article["id"] = id.ToString(); article["brandId"] = brandId.ToString(); article["createdAt"] = DateTimeOffset.UtcNow.ToString("O");
+        article["contentHash"] = ArticleDeduplication.ContentKey(article); article["sourceKey"] = ArticleDeduplication.SourceKey(article["sourceUrl"]?.ToString() ?? "");
+        var saved = new Document { Id = id, Kind = "articles", Json = article.ToJsonString() };
+        store.Documents.Add(saved); await store.SaveChangesAsync(); await tx.CommitAsync(); return (saved, false, null);
+    }
+
     public Task<Document?> FindDocumentAsync(Guid id, string kind) => store.Documents.SingleOrDefaultAsync(d => d.Id == id && d.Kind == kind);
     public Task<Document?> FindJobAsync(Guid id) => store.Documents.SingleOrDefaultAsync(d => d.Id == id && (d.Kind == "tasks" || d.Kind == "runs"));
     public Task<List<Document>> ListDocumentsAsync(string kind) => store.Documents.Where(d => d.Kind == kind).OrderByDescending(d => d.CreatedAt).ToListAsync();

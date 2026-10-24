@@ -95,17 +95,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div className="panel-header-line">
               <div className="panel-title-group">
                 <Activity size={16} className="text-emerald" />
-                <h3 className="panel-title-text">{t.dashboard.clusterTopology}</h3>
+                <h3 className="panel-title-text">Thành phần xử lý</h3>
               </div>
-              <span className="tag-cluster-online">{t.dashboard.nodesOnline}</span>
+              <span className="tag-cluster-online">Worker local</span>
             </div>
 
             <div className="nodes-grid">
               {[
-                { name: 'Worker-Alpha', engine: 'Thu thập Facebook', status: 'Chưa triển khai', load: '0%' },
-                { name: 'Worker-Beta', engine: 'Thu thập Facebook', status: 'Chưa triển khai', load: '0%' },
-                { name: 'Worker-Gamma', engine: 'Lọc bài bằng Clef', status: 'Chưa triển khai', load: '0%' },
-                { name: 'Worker-Delta', engine: 'Tải ảnh và video', status: 'Chưa triển khai', load: '0%' }
+                { name: 'Facebook local', engine: 'Thu thập và chống trùng', status: telemetry.activeTargets > 0 ? 'Đang chạy' : 'Sẵn sàng', load: '—' },
+                { name: 'Media', engine: 'Ảnh feed / video HTTP', status: 'Có giới hạn', load: '—' },
+                { name: 'Clef', engine: 'Đánh giá sau thu thập', status: 'Chạy tuần tự', load: '—' },
+                { name: 'Xuất bản', engine: 'Đăng Facebook', status: 'Chưa triển khai', load: '—' }
               ].map((node, i) => (
                 <div key={i} className="node-tile">
                   <div className="node-tile-top">

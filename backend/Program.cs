@@ -23,12 +23,15 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IRecordsService, RecordsService>();
 builder.Services.AddScoped<IAccountsService, AccountsService>();
 builder.Services.AddScoped<FacebookLoginService>();
+builder.Services.AddScoped<ArticleIngestService>();
 builder.Services.AddScoped<ISystemService, SystemService>();
 builder.Services.AddScoped<IWorkflowsService, WorkflowsService>();
 builder.Services.AddScoped<IContentService, ContentService>();
 builder.Services.AddScoped<IContentReportService, ContentReportService>();
 builder.Services.AddScoped<IChannelsService, ChannelsService>();
 
+builder.Services.AddSingleton<FacebookCrawlWorker>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<FacebookCrawlWorker>());
 builder.Services.AddSingleton<AiRunner>();
 builder.Services.AddSingleton<FacebookAccountHealth>();
 if (args.Contains("--migrate-postgres")) { await DatabaseTransfer.Run(builder.Configuration); return; }

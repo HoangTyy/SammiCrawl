@@ -54,7 +54,7 @@ URL API giữ nguyên để frontend tiếp tục sử dụng. Bí mật Faceboo
 
 Studio tự chọn toàn bộ tài khoản cào đang bật và đủ điều kiện, nhận giới hạn bài và khoảng nghỉ min/max. Thư viện bài lọc theo brand và trạng thái Clef. Repost tạo bản nháp giữ nội dung/media gốc; Rewrite gọi Bonsai thật, rồi chờ duyệt. Duyệt kiểm tra file media và tài khoản đăng, lưu trạng thái `approved_pending_worker`.
 
-Worker cào Facebook, tải/kiểm chứng media, Clef lọc nền và đăng Facebook vẫn **chưa triển khai**. API chặn chạy và báo lý do; không báo thành công giả. Thư viện chưa có bài thu thập thật.
+Worker cào local đã nối vào nút Chạy cào bài; nhận bài/ảnh nguồn, chống trùng và đánh giá Clef tuần tự. Worker đăng Facebook chưa triển khai. Xem giới hạn worker bên dưới.
 
 `POST /api/accounts/{id}/runtime-error` yêu cầu Bearer `WORKER_API_KEY`, kiểm tra job/account binding và lưu lỗi; không tự retry. `POST /api/ai/rewrite` dùng Bonsai qua Ollama, singleton semaphore chỉ cho một request AI, unload model trước và sau suy luận. Không chạy thêm replica hoặc tác vụ ngoài ứng dụng nếu cần độc quyền toàn máy.
 
@@ -72,7 +72,7 @@ Hồ sơ có danh sách kênh Group/Page, mỗi kênh có ID ổn định, URL, 
 
 Database đã nạp 8 thương hiệu và 14 kênh từ workbook StuXP theo yêu cầu. Mức tối thiểu các Group cộng 50 bài/ngày; Page chưa ghi chỉ tiêu trong nguồn giữ 0 (chưa đặt). Group hub áp dụng 100–250 từ theo yêu cầu riêng; Group khác 80–250, Page 50–150. Dữ liệu này ở PostgreSQL, không tự seed mỗi khi khởi động. Không đưa nội dung trả công CTV vào nghiệp vụ hiện tại.
 
-POST /api/articles/{id}/evaluate gọi clef-flash:latest qua /v1/systemone, hỗ trợ tối đa 4 ảnh local JPG/PNG/WebP (mỗi ảnh 5 MB), lưu quyết định có cấu trúc, điểm phù hợp, chủ đề, lý do lựa chọn và cảnh báo. Điểm 0–100 quy đổi từ thang phù hợp 0–4, không phải xác suất bài đúng. Clef là decision model, không sinh đoạn giải thích tự do. Video và media không phân tích được sẽ yêu cầu xem thủ công. Lỗi AI giữ kết quả cũ. Đây là đánh giá thủ công cho bài đã có; worker lọc nền chưa triển khai.
+POST /api/articles/{id}/evaluate gọi clef-flash:latest qua /v1/systemone, hỗ trợ tối đa 4 ảnh local JPG/PNG/WebP (mỗi ảnh 5 MB), lưu quyết định có cấu trúc, điểm phù hợp, chủ đề, lý do lựa chọn và cảnh báo. Điểm 0–100 quy đổi từ thang phù hợp 0–4, không phải xác suất bài đúng. Clef là decision model, không sinh đoạn giải thích tự do. Video và media không phân tích được sẽ yêu cầu xem thủ công. Lỗi AI giữ kết quả cũ. Có thể gọi thủ công hoặc worker gọi tuần tự sau khi thu thập.
 
 Khi Repost/Rewrite phải chọn một kênh đang bật. Bonsai nhận profile và hướng dẫn riêng của kênh. Draft giữ bản chụp profile, kênh, nguồn và media; sửa nội dung, checklist và giờ dự kiến tại PUT /api/drafts/{id}. Bản nháp lưu xong có thể mở lại trong Danh sách bài → Bản nháp & lịch đăng. Thay nội dung trên UI sẽ bỏ chọn checklist để duyệt lại.
 
@@ -89,3 +89,19 @@ GET /api/channels; POST /api/brands/{brandId}/channels; PUT /api/brands/{brandId
 ## Kết nối tài khoản Facebook qua backend
 
 POST /api/accounts/{id}/login (đã đăng nhập dự án), body email/password, thử đăng nhập trong Chromium của backend rồi lưu cookie bằng Data Protection nếu Facebook cấp phiên và UID khớp. Mật khẩu không được lưu. Kết quả phải qua kiểm tra phiên thật; checkpoint/CAPTCHA không được tự giải. Phiên trình duyệt cá nhân không tự đồng bộ vào container. Endpoint này không cung cấp worker cào/đăng.
+
+Form tài khoản nhập riêng UID và giá trị xs; frontend gửi trường xs, backend tự ghép c_user=UID; xs=giá trị trước khi mã hóa/kiểm tra. API cookie cũ vẫn tương thích. Endpoint session trả thêm xs để form hiển thị dữ liệu cũ dạng chuỗi hoặc JSON. Không giải mã URL giá trị xs.
+
+## Chống trùng bài nguồn
+
+POST /api/articles/ingest (yêu cầu đăng nhập) là điểm nhận metadata/nội dung bài cho luồng thu thập, không tự cào Facebook. Nhận brandId/sourceUrl/content/title. Link phải nhận diện được bài cụ thể; media không rỗng bị từ chối vì đường ingest này chưa tải media. Trả article/duplicate/duplicateReason. Bài trùng trả bản đã có, không ghi đè nội dung hoặc kết quả AI. So sánh theo thương hiệu, ID bài gốc (bỏ khác biệt query tracking/host) hoặc SHA256 của Unicode NFKC, gộp khoảng trắng, không phân biệt hoa/thường. Bài chỉ có media/không chữ không bị gộp theo nội dung rỗng. Không lọc gần nghĩa hoặc nội dung viết lại. Khóa transaction trong DB bảo vệ lookup/insert qua nhiều request/replica. Dữ liệu cũ cũng được so sánh; không xóa bản trùng cũ tự động. Hiện quét các bài đã lưu trong transaction nên cần bảng chỉ mục/hash riêng khi quy mô tăng. Worker cào local dùng cùng cơ chế repository này để lưu cả metadata và file media đã tải; endpoint ingest thủ công vẫn chỉ nhận metadata.
+
+## Worker cào Facebook local (24/10/2026)
+
+POST /api/crawl/start nhận cấu hình từ UI và tạo task pending, chuyển cho BackgroundService dùng Chromium trong container. Chỉ tài khoản role=crawl, enabled, facebookStatus=active, không ở thùng rác và có phiên mã hóa được chọn. Một lượt mỗi process; không triển khai nhiều replica crawler vì queue hiện in-memory. Restart chuyển task dang dở thành paused, không tự retry. Nút hủy chuyển task paused, worker kiểm tra giữa các bước. Dừng/challenge/login/rate limit không được tự vượt hoặc thử lặp lại.
+
+Giới hạn bài là số bài mới được lưu (bài trùng không tính). delayMinMs/delayMaxMs hiện là thời gian nghỉ giữa bài, kể cả bài trùng; nghỉ cuộn nội bộ 1,5–3 giây. accountPostLimit và accountRestMinMs/accountRestMaxMs áp dụng giữa các tài khoản. Chỉ nhận minLikes/minComments=0 và includeComments=false trong bản đầu này, không giả lập tương tác/bình luận chưa lấy. keywords lọc OR theo các mục cách nhau bằng dấu phẩy; topicDescription bổ sung yêu cầu chủ đề khi Clef đánh giá cùng quy chuẩn thương hiệu.
+
+Nguồn: đọc DOM bài được Facebook hiển thị, mở Xem thêm, nhận diện permalink/ID từ link bài hoặc gm ID của ảnh. Tải ảnh/video qua URL HTTPS trên CDN Facebook vào volume media. Đây là bản media Facebook cung cấp trên feed, không bảo đảm độ phân giải gốc; video blob/DASH chưa được ghép/tải. Ghi mediaWarnings và ép bài có media chưa xác minh sang cần xem lại khi Clef đề xuất. Không báo đã tải video khi chỉ có thumbnail. Sau thu thập, Clef chạy từng bài qua khóa model hiện có. Lỗi AI giữ pending để đánh giá lại, không xóa bài.
+
+Nếu Facebook đổi DOM có thể không nhận diện được bài; task lưu lý do, số bài thực tế và lượt trùng. Max scroll dừng sớm có thể dẫn đến paused/SOURCE_EXHAUSTED, không coi đủ số yêu cầu. Không có thao tác đăng trong worker này.

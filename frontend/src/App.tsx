@@ -31,7 +31,7 @@ function MainAppShell() {
   const refresh = async () => {
     const start = performance.now();
     const [items, messages] = await Promise.all([api<CrawlTask[]>('/records/tasks'), api<string[]>('/logs')]);
-    setTasks(items); setLogs(messages.reverse()); setConnection('Đã kết nối PostgreSQL · Worker Facebook chưa triển khai');
+    setTasks(items); setLogs(messages.reverse()); setConnection('Đã kết nối PostgreSQL · Worker cào Facebook local · Chưa có worker đăng bài');
     setTelemetry({ activeTargets: items.filter(t => t.status === 'running').length, postsCaptured: items.reduce((n,t) => n + t.crawledPosts,0), queueDepth: items.filter(t => t.status === 'pending').length, systemHealth: 100, apiLatencyMs: Math.round(performance.now()-start), proxyPoolReady: 0, workerNodesOnline: 0 });
   };
   useEffect(() => { const update = () => { refresh().catch(e => { setConnection(e.message); setTelemetry(t => ({...t, systemHealth: 0, workerNodesOnline: 0})); }); }; update(); const timer = setInterval(update, 10000); return () => clearInterval(timer); }, []);

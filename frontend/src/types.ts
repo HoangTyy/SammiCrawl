@@ -10,6 +10,9 @@ export interface CrawlTask {
   status: TaskStatus;
   maxPosts: number;
   crawledPosts: number;
+  errorReason?: string;
+  errorCode?: string;
+  duplicatesSkipped?: number;
   scrollDelay?: number;
   maxScrolls?: number;
   delayMinMs?: number;

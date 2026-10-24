@@ -23,6 +23,8 @@ public sealed class AccountsService(IProjectRepository db, IDataProtectionProvid
         var record = await db.FindDocumentAsync(id, "accounts");
         if (record is null) return ServiceResult.NotFound();
         if (string.IsNullOrWhiteSpace(data["name"]?.ToString()) || data["role"]?.ToString() is not ("crawl" or "publish")) return ServiceResult.BadRequest(new { error = "Tài khoản cần tên và vai trò cào/đăng." });
+        var sessionError = FacebookSessionInput.Normalize(data);
+        if (sessionError is not null) return ServiceResult.BadRequest(new { error = sessionError });
         var original = JsonNode.Parse(record.Json)!;
         var fbStatus = data["facebookStatus"]?.ToString() ?? original["facebookStatus"]?.ToString() ?? "unknown";
         if (!FacebookAccountHealth.Allowed.Contains(fbStatus)) return ServiceResult.BadRequest(new { error = "Trạng thái Facebook không hợp lệ." });
@@ -38,8 +40,8 @@ public sealed class AccountsService(IProjectRepository db, IDataProtectionProvid
     {
         var record = await db.FindDocumentAsync(id, "accounts");
         if (record is null || JsonNode.Parse(record.Json)?["deletedAt"] is not null) return ServiceResult.NotFound();
-        if (string.IsNullOrEmpty(record.ProtectedSecret)) return ServiceResult.Ok(new { cookie = "" });
-        try { return ServiceResult.Ok(new { cookie = protection.CreateProtector("FacebookSession.v1").Unprotect(record.ProtectedSecret) }); }
+        if (string.IsNullOrEmpty(record.ProtectedSecret)) return ServiceResult.Ok(new { cookie = "", xs = "" });
+        try { var raw = protection.CreateProtector("FacebookSession.v1").Unprotect(record.ProtectedSecret); return ServiceResult.Ok(new { cookie = raw, xs = FacebookSessionInput.ExtractXs(raw) }); }
         catch { return ServiceResult.Conflict(new { error = "Không giải mã được phiên đã lưu." }); }
     }
 

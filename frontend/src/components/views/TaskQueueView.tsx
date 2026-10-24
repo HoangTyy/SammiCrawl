@@ -224,6 +224,7 @@ export const TaskQueueView: React.FC<TaskQueueViewProps> = ({
                         >
                           {task.url} <ExternalLink size={10} />
                         </a>
+                        {task.errorReason&&<small className="task-worker-message">{task.errorReason}</small>}
                       </div>
                     </td>
                     <td>
