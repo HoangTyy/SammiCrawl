@@ -8,6 +8,8 @@ namespace SammiCrawl.Backend.Services;
 public sealed class FacebookCrawlWorker(IServiceScopeFactory scopes, IDataProtectionProvider protection, IWebHostEnvironment env, ILogger<FacebookCrawlWorker> log) : BackgroundService
 {
     readonly Channel<Guid> queue = Channel.CreateUnbounded<Guid>();
+    readonly HttpClient mediaHttp = new(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false }) { Timeout = Timeout.InfiniteTimeSpan };
+    public override void Dispose() { mediaHttp.Dispose(); base.Dispose(); }
     int busy;
     public bool IsBusy => Volatile.Read(ref busy) != 0;
     public bool Enqueue(Guid id) { if (Interlocked.CompareExchange(ref busy, 1, 0) != 0) return false; queue.Writer.TryWrite(id); return true; }
@@ -142,16 +144,17 @@ public sealed class FacebookCrawlWorker(IServiceScopeFactory scopes, IDataProtec
     }
     async Task<JsonObject?> Download(IBrowserContext context,string src,string kind,Guid job,CancellationToken ct)
     {
-        if(!Uri.TryCreate(src,UriKind.Absolute,out var u)||u.Scheme!="https"||!(u.Host.EndsWith(".fbcdn.net")||u.Host.EndsWith(".facebook.com")))return null;
+        if (!Uri.TryCreate(src, UriKind.Absolute, out var url) || !FacebookMediaDownload.Allowed(url)) return null;
         try
         {
-            var response=await context.APIRequest.GetAsync(src,new(){Timeout=30000,MaxRedirects=0});if(!response.Ok)return null;
-            var type=response.Headers.GetValueOrDefault("content-type","").Split(';')[0];
-            var ext=type switch{"image/jpeg"=>".jpg","image/png"=>".png","image/webp"=>".webp","video/mp4"=>".mp4",_=>null};if(ext is null||kind=="video"&&ext!=".mp4"||kind=="image"&&ext==".mp4")return null;
-            var bytes=await response.BodyAsync();if(bytes.Length==0||bytes.Length>50_000_000)return null;
-            var folder=Path.Combine(env.WebRootPath??Path.Combine(env.ContentRootPath,"wwwroot"),"media","crawl",job.ToString());Directory.CreateDirectory(folder);var file=Guid.NewGuid()+ext;await File.WriteAllBytesAsync(Path.Combine(folder,file),bytes,ct);
-            return new(){["type"]=kind,["url"]=$"/media/crawl/{job}/{file}",["bytes"]=bytes.Length,["sourceUrl"]=src,["quality"]="source_served"};
-        }catch{return null;}
+            var scopedCookies = await context.CookiesAsync(new[] { src });
+            var cookie = string.Join("; ", scopedCookies.Select(c => c.Name + "=" + c.Value));
+            var agent = context.Pages.Count > 0 ? await context.Pages[0].EvaluateAsync<string>("navigator.userAgent") : "";
+            var folder = Path.Combine(env.WebRootPath ?? Path.Combine(env.ContentRootPath, "wwwroot"), "media", "crawl", job.ToString());
+            var result = await FacebookMediaDownload.Download(mediaHttp, url, folder, kind, cookie, agent, ct);
+            if (result is null) return null;
+            return new() { ["type"] = kind, ["url"] = $"/media/crawl/{job}/{result.Value.FileName}", ["bytes"] = result.Value.Bytes, ["sourceUrl"] = src, ["quality"] = "source_served" };
+        }
+        catch { return null; }
     }
 }
-

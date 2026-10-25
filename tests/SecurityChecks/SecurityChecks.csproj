@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../backend/Infrastructure/RequestPipelineExtensions.cs" Link="Infrastructure/RequestPipelineExtensions.cs" />
+    <Compile Include="../../backend/Infrastructure/SecurityServiceExtensions.cs" Link="Infrastructure/SecurityServiceExtensions.cs" />
+    <Compile Include="../../backend/Infrastructure/RequestSecurityExtensions.cs" Link="Infrastructure/RequestSecurityExtensions.cs" />
+    <Compile Include="../../backend/Infrastructure/PublicAssetsFileProvider.cs" Link="Infrastructure/PublicAssetsFileProvider.cs" />
+    <Compile Include="../../backend/Controllers/AuthController.cs" Link="Controllers/AuthController.cs" />
+    <Compile Include="../../backend/Controllers/ServiceResultExtensions.cs" Link="Controllers/ServiceResultExtensions.cs" />
+    <Compile Include="../../backend/Contracts/ServiceResult.cs" Link="Contracts/ServiceResult.cs" />
+    <Compile Include="../../backend/Contracts/Credentials.cs" Link="Contracts/Credentials.cs" />
+    <Compile Include="../../backend/Infrastructure/FacebookMediaDownload.cs" Link="Infrastructure/FacebookMediaDownload.cs" />
+  </ItemGroup>
+</Project>

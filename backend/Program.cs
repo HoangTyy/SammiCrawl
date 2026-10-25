@@ -10,19 +10,8 @@ builder.Services.AddDbContext<Store>(o =>
     if (provider.Equals("PostgreSql", StringComparison.OrdinalIgnoreCase)) o.UseNpgsql(connection);
     else o.UseSqlServer(connection);
 });
-builder.Services.AddDataProtection();
-builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme).AddCookie(o =>
-{
-    o.Cookie.Name = "SammiCrawl.Session"; o.Cookie.HttpOnly = true; o.Cookie.SameSite = SameSiteMode.Strict;
-    o.Events.OnRedirectToLogin = c => { c.Response.StatusCode = 401; return Task.CompletedTask; };
-    o.Events.OnRedirectToAccessDenied = c => { c.Response.StatusCode = 403; return Task.CompletedTask; };
-});
-builder.Services.AddAuthorization();
+builder.Services.AddProjectSecurity();
 builder.Services.AddControllers();
-builder.Services.AddRateLimiter(options => {
-    options.RejectionStatusCode=429;
-    options.AddFixedWindowLimiter("remote-ai", o => { o.PermitLimit=30;o.Window=TimeSpan.FromMinutes(1);o.QueueLimit=0; });
-});
 builder.Services.AddScoped<IProjectRepository, ProjectRepository>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IRecordsService, RecordsService>();

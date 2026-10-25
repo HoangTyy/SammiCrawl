@@ -105,3 +105,13 @@ Giới hạn bài là số bài mới được lưu (bài trùng không tính). 
 Nguồn: đọc DOM bài được Facebook hiển thị, mở Xem thêm, nhận diện permalink/ID từ link bài hoặc gm ID của ảnh. Tải ảnh/video qua URL HTTPS trên CDN Facebook vào volume media. Đây là bản media Facebook cung cấp trên feed, không bảo đảm độ phân giải gốc; video blob/DASH chưa được ghép/tải. Ghi mediaWarnings và ép bài có media chưa xác minh sang cần xem lại khi Clef đề xuất. Không báo đã tải video khi chỉ có thumbnail. Sau thu thập, Clef chạy từng bài qua khóa model hiện có. Lỗi AI giữ pending để đánh giá lại, không xóa bài.
 
 Nếu Facebook đổi DOM có thể không nhận diện được bài; task lưu lý do, số bài thực tế và lượt trùng. Max scroll dừng sớm có thể dẫn đến paused/SOURCE_EXHAUSTED, không coi đủ số yêu cầu. Không có thao tác đăng trong worker này.
+
+## Bảo mật API từ 25/10/2026
+
+Frontend tự gọi GET `/api/auth/csrf` rồi gửi header `X-CSRF-TOKEN` cho POST/PUT/PATCH/DELETE dưới `/api`, kể cả login/setup/logout. Client thủ công phải giữ cùng cookiejar, lấy token mới sau khi login đổi identity. Missing/invalid token trả403 `CSRF_TOKEN_INVALID`; không tự retry mutation. `/bridge/*` vẫn Bearer RemoteAiKey; `/api/accounts/{id}/runtime-error` chỉ miễn CSRF khi đúng WorkerKey đã xác thực. Cookie dự án không thay được key của hai nhóm này.
+
+Login/setup giới hạn10request/phút theo IPpeer thực, không tin X-Forwarded-For tự khai, body16KiB; email<=254/password<=1024. Vượt quota trả429+Retry-After. Ticketcookie mới8h, không sliding; không tự thu hồi ticketcũ. SameSiteStrict/HttpOnly giữ nguyên. HTTPSrequest có Securecookie, HTTPloopback vẫn dùng được; trustedproxy/TLS phải cấu hình riêng theo deployment, không bật trust-any-proxy.
+
+`/media/*` cần sessioncookie đã đăng nhập, anonymous401, khôngcache; publicprovider chặn media canonical khỏi kho staticpublic. AssetsJS/CSS/login vẫnpublic. Missingmedia404, rangevideo vẫn được hỗ trợ. Tảimedia dùngHTTPS443 allowlist, khôngredirect, scopedcookie, streamtốiđa50MB, timeout30s, filepartial không được côngbố thành mediahoàntất.
+
+Test độc lập: xem `tests/SecurityChecks/README.md`. Báo cáo và giớihạn: `docs/research/SECURITY-HARDENING.md`. Không đổi credential hoặc resetdemo khi chạy các kiểmtra này.

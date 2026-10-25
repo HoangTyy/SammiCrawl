@@ -1,3 +1,4 @@
+using Microsoft.Extensions.FileProviders;
 using System.Security.Claims;
 
 namespace SammiCrawl.Backend.Infrastructure;
@@ -9,15 +10,21 @@ public static class RequestPipelineExtensions
         app.Use(async (ctx, next) =>
         {
             try { await next(); }
+            catch (BadHttpRequestException ex) when (!ctx.Response.HasStarted)
+            {
+                ctx.Response.StatusCode = ex.StatusCode;
+                await ctx.Response.WriteAsJsonAsync(new { error = ex.StatusCode == 413 ? "Dữ liệu yêu cầu quá lớn." : "Yêu cầu HTTP không hợp lệ." });
+            }
+            catch (OperationCanceledException) when (ctx.RequestAborted.IsCancellationRequested) { }
             catch (Exception ex) { app.Logger.LogError(ex, "Request failed: {Path}", ctx.Request.Path); if (!ctx.Response.HasStarted) { ctx.Response.StatusCode = 500; await ctx.Response.WriteAsJsonAsync(new { error = "Xử lý thất bại. Kiểm tra nhật ký máy chủ." }); } }
         });
+        app.UseProjectSecurityHeaders();
         // Port 8081 is the tunnel origin: expose only the authenticated AI gateway.
         app.Use(async (ctx, next) =>
         {
             if (ctx.Connection.LocalPort == 8081 && !ctx.Request.Path.StartsWithSegments("/bridge")) { ctx.Response.StatusCode = 404; return; }
             await next();
         });
-        app.UseDefaultFiles(); app.UseStaticFiles();
         app.Use(async (ctx, next) =>
         {
             if (ctx.Request.Path.StartsWithSegments("/bridge"))
@@ -48,8 +55,27 @@ public static class RequestPipelineExtensions
             }
             await next();
         });
+        var mediaRoot = Path.Combine(app.Environment.WebRootPath ?? Path.Combine(app.Environment.ContentRootPath, "wwwroot"), "media");
+        app.Use(async (ctx, next) =>
+        {
+            if (ctx.Request.Path.StartsWithSegments("/media") && (ctx.User.Identity?.IsAuthenticated != true || ctx.User.Identity.AuthenticationType != "Cookies"))
+            {
+                ctx.Response.StatusCode = 401;
+                return;
+            }
+            await next();
+        });
+        Directory.CreateDirectory(mediaRoot);
+        var privateFiles = new PhysicalFileProvider(mediaRoot);
+        app.Lifetime.ApplicationStopped.Register(privateFiles.Dispose);
+        app.UseStaticFiles(new StaticFileOptions { FileProvider = privateFiles, RequestPath = "/media" });
+        var publicFiles = new PublicAssetsFileProvider(app.Environment.WebRootFileProvider, mediaRoot);
+        app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = publicFiles });
+        app.UseStaticFiles(new StaticFileOptions { FileProvider = publicFiles });
+        app.Use(async (ctx, next) => { if (ctx.Request.Path.StartsWithSegments("/media")) { ctx.Response.StatusCode = 404; return; } await next(); });
         app.UseAuthorization();
         app.UseRateLimiter();
+        app.UseProjectAntiforgery();
 
         return app;
     }

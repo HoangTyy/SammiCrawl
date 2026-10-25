@@ -1,6 +1,6 @@
 # SammiCrawl — hướng dẫn cho AI và người tiếp quản
 
-Cập nhật: 23/10/2026. Đọc file này trước khi sửa mã; sau đó đọc `LOCAL-SETUP.md` và các file liên quan đến tác vụ. Đây là mô tả hiện trạng, không phải bằng chứng rằng worker đã hoạt động. Kiểm tra lại source/runtime khi tiếp quản.
+Cập nhật: 25/10/2026. Đọc file này trước khi sửa mã; sau đó đọc `LOCAL-SETUP.md` và các file liên quan đến tác vụ. Đây là mô tả hiện trạng, không phải bằng chứng rằng worker đã hoạt động. Kiểm tra lại source/runtime khi tiếp quản.
 
 ## Mục tiêu sản phẩm
 
@@ -83,7 +83,7 @@ Tài khoản demo công khai: `demo@sammicrawl.local` / `SammiDemo@2026`. Nếu 
 
 Frontend build: `cd frontend` → `npm ci` → `npm run build`. Backend build: `dotnet build backend/SammiCrawl.Backend.csproj` (xác minh tên csproj thực tế trước khi chạy). Kiểm tra toàn stack bằng `docker compose build app`; triển khai local `docker compose up -d --no-deps app`. Đợi `/api/auth/status` trả 200 rồi kiểm tra UI. `git diff --check` trước khi bàn giao.
 
-Không có bộ test tích hợp độc lập đã đóng gói trong repo; script thử ở `work/` bị ignore và không có sẵn khi pull. Dùng fixture riêng khi cần, không sửa/xóa dữ liệu thật để thử. UI pass/build pass không chứng minh Facebook đã cào/đăng thật.
+Bộ kiểm tra bảo mật độc lập nằm tại `tests/SecurityChecks/`, dùng fixture riêng không kết nối DB, Facebook hoặc Ollama. Các script trong `work/` bị ignore và không có sẵn khi pull. Không sửa/xóa dữ liệu thật để thử. UI pass/build pass không chứng minh Facebook đã cào/đăng thật.
 
 ## API để tìm nhanh
 
@@ -128,3 +128,24 @@ Luồng ảnh đã thay thế cách rewrite ảnh trực tiếp: POST /api/artic
 Giọng rewrite: ưu tiên tone/audience/writingStyle/CTA/name riêng của kênh rồi fallback brand. Giữ đồng thời dữ kiện đúng và cách viết riêng; ẩn dụ là lối nói, không phải dữ kiện mới. Chỉ kênh có tone tech mới gợi ẩn dụ lập trình. Yêu cầu hook, đoạn ngắn, emoji phù hợp, lựa chọn đúng ảnh, CTA và hashtag; không đưa ghi chú OCR/xác nhận vào caption. Không khôi phục Markdown.
 
 UI responsive: <=600px bảng bài/tác vụ/kênh/tài khoản hiển thị thẻ có nhãn; desktop giữ bảng. useDialogKeyboard.ts dùng chung cho modal, giữ Tab trong modal, inert nền, Escape trừ busy và trả focus về nút mở. Giữ cơ chế này khi sửa modal. Mẫu cấu hình chỉ trình bày tham số cào worker dùng; lựa chọn Repost/Rewrite nằm sau bước thu thập.
+
+## Bảo mật — cập nhật 25/10/2026
+
+Đọc `docs/research/SECURITY-HARDENING.md` và `tests/SecurityChecks/README.md` trước khi sửa xác thực, middleware hoặc tải media.
+
+- `Infrastructure/SecurityServiceExtensions.cs`: đăng ký cookie, antiforgery và rate limit. Ticket mới hết hạn sau 8 giờ, không gia hạn trượt; không tự thu hồi ticket cũ. Login/setup giới hạn 10 yêu cầu/phút/IP và body 16 KB.
+- `Infrastructure/RequestSecurityExtensions.cs`: header bảo mật và kiểm tra CSRF cho API thay đổi dữ liệu. `GET /api/auth/csrf` cấp token; frontend gửi `X-CSRF-TOKEN` cùng cookie. `frontend/src/api.ts` giữ token trong bộ nhớ, reset sau đổi danh tính và không tự retry mutation.
+- `Infrastructure/RequestPipelineExtensions.cs` và `PublicAssetsFileProvider.cs`: giữ ranh giới port gateway, yêu cầu phiên cookie hợp lệ cho `/media`, chặn media qua static provider công khai và trả 404 cho media không tồn tại. Không bỏ bảo vệ để lách lỗi 401/403.
+- `Infrastructure/FacebookMediaDownload.cs`: tải theo luồng, giới hạn 50 MB/file và 30 giây, kiểm tra HTTPS/domain/MIME, không tự theo redirect, xóa file tạm khi lỗi. `FacebookCrawlWorker` chỉ gửi cookie phù hợp URL; không log giá trị cookie. Allowlist không thay thế DNS/IP pinning hoặc kiểm tra codec.
+- Bridge Bearer và worker key không được cấp quyền xem media hoặc gọi API ngoài phạm vi. Giữ riêng các cơ chế xác thực này.
+
+Chạy bộ kiểm tra từ thư mục gốc:
+
+```powershell
+docker build -f tests/SecurityChecks/Dockerfile -t sammicrawl-security-checks .
+docker run --rm sammicrawl-security-checks
+```
+
+Mốc kiểm tra hiện tại: 43 assertion đạt, frontend và image app build thành công. Fixture dùng controller/middleware thật với dịch vụ giả, không dùng live DB để dựng dữ liệu test. Đây không phải pentest toàn diện hoặc bằng chứng Facebook chạy thật.
+
+Không tự xóa chức năng xem cookie mà người dùng yêu cầu; không tự đổi connection string/demo credential hoặc viết lại lịch sử Git. Secret đang được track, demo công khai, thu hồi phiên, TLS/trusted proxy và giới hạn media còn lại được ghi trong báo cáo. Cần xử lý các điểm này trước khi mở UI ra Internet; không coi build/test pass là đã an toàn để public.
