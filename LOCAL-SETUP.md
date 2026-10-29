@@ -143,3 +143,27 @@ Client chỉ thử lại tối đa một lần (nghỉ2giây) với POST bridge/
 Gateway mới trả mã lỗi phân biệt CLEF_INVALID_OUTPUT, AI_UPSTREAM_FAILED, AI_TIMEOUT và log code/type/trace, không log payload/cookie/key. Client hiển thị mã/lý do an toàn thay vì che mọi lỗi bằng một câu chung. Cần pull và build/recreate app trên cả máy client lẫn máy chủ AI; máy AI phải giữ RemoteAi:BaseUrl trống để không gọi vòng. Giữ .env và volume khóa/media trên mỗi máy; file env thiếu dấu chấm được ignore, Compose vẫn cần .env.
 
 Đánh giá lại hết các bài của tác vụ dừng vì Clef: nếu đã đủ mục tiêu thì completed; nếu mới thu thập4/10 thì vẫn paused/COLLECTION_INCOMPLETE, báo còn thiếu bài thu thập thay vì ghi Clef còn0bài chờ. Không tự resume Facebook.
+
+## Tìm nhóm theo chủ đề — 29/10/2026
+
+CrawlerStudio có sourceMode=group-search (mặc định) và url (tương thích). Từ khóa lấy allowedTopics/name thương hiệu, sửa được trước chạy, tối đa6 mục/200ký tự; maxGroups1–20 và groupPostLimit1–1000. Tổng mục tiêu không vượt min(1000, tài khoản×accountPostLimit, nhóm×groupPostLimit). Mẫu cũ không sourceMode áp dụng url; tạo nhanh bằng URL cũng chọn url. Không tự tăng/hạ thông số.
+
+Worker dùng phiên tài khoản cào để mở Facebook search/groups, đọc các link nhóm hiển thị, canonical hóa URL và giới hạn tối đa3 lần cuộn/từ khóa. Không tự tham gia nhóm, không vượt checkpoint/giới hạn; chỉ đọc nội dung tài khoản truy cập được. maxGroups/groupPostLimit là giới hạn chung trong tác vụ; accountPostLimit áp dụng tổng bài của tài khoản qua các nhóm. Hết nguồn/tìm không thấy đủ bài vẫn paused, không báo đủ mục tiêu.
+
+Nhóm nguồn lưu Document Kind=sourceGroups (không thêm generic CRUD), ID ổn định theo brand+URL; repository upsert dưới transaction/PG advisory lock. GET /api/source-groups qua service trả tên/link/từ khóa, số bài đã thu thập, accepted/review/rejected/pending và kênh phù hợp. Bảng nằm dưới form Cào bài, giữ NavigationTab/menu. Số accepted chỉ tính aiStatus recommended và không deleted; review không tính đã chấp nhận. Thống kê dựa trên các bài hiện lưu; không tự gắn nguồn cho bài cũ hoặc nhân bản bài trùng.
+
+Bài từ group-search lưu sourceGroupId/name/url và channelEvaluationRequired. Sau đánh giá thương hiệu, Clef đối chiếu lần lượt các kênh đang bật trong cùng gate bằng protocol Evaluate hiện có (không cần đổi gateway). Lưu aiChannelMatches (ID/tên/status/score/reason) và aiChannelEvaluationStatus=complete chỉ khi xong. Mọi kênh rejected thì loại bài; chỉ review thì giữ review. Bài brand rejected bỏ qua đối chiếu kênh. Khi kênh/AI lỗi, bài pending và tác vụ không hoàn thành. Có thêm nhiều request Clef nên thời gian/khả năng gặp giới hạn tăng. Kênh phù hợp là gợi ý dựa vào các bài đã đánh giá, không chứng minh quyền đăng hoặc toàn bộ nhóm phù hợp.
+
+Chưa chạy thử tìm/cào Facebook thật trong lượt triển khai; DOM Facebook có thể thay đổi. Kiểm tra build, helper và UI dùng fixture không thay dữ liệu thật; chưa bảo đảm chất lượng kết quả tìm nhóm hoặc đánh giá AI trên dữ liệu thật.
+
+## Rewrite dùng ảnh làm ngữ cảnh — 29/10/2026
+
+Bấm Rewrite gửi phần chữ bài gốc cùng tối đa4 ảnh JPG/PNG/WebP local (5 MB/ảnh) cho Bonsai trong một request. AI chỉ viết lại caption, dùng ảnh để tránh lạc đề, không trả mô tả/OCR hoặc bắt người dùng xác nhận ghi chú ảnh. Giữ media gốc trong draft; thiếu file/video chưa phân tích vẫn báo lý do, không âm thầm bỏ ảnh. UI có tiến độ ước tính, đóng/cuộn được khi chờ; cần duyệt nội dung trước khi đăng. Draft lịch sử giữ nguyên. Gateway hiện có đã hỗ trợ Images và Instructions; chưa kiểm chứng chất lượng diễn giải trên mọi ảnh.
+
+## Metadata tương tác bài nguồn — 29/10/2026
+
+FacebookCrawlWorker đọc bộ đếm hiển thị trong phạm vi bài bằng FacebookPostMetadata.Script, không bấm cảm xúc/bình luận, không gọi API Facebook riêng. Lưu reactions (tổng cảm xúc), likes chỉ khi có nhãn Thích rõ ràng, comments, raw CountText và CountApproximate cho số rút gọn, interactionCapturedAt UTC. Thiếu/ẩn không coi là0; loại số trong caption, comment lồng, phần tử ẩn và container lẫn nhiều bài. Chưa hỗ trợ bộ lọc tương tác, không tải nội dung bình luận. DOM khác chưa nhận diện có thể để trống.
+
+Giờ nguồn lưu sourcePublishedAt UTC chỉ từ data-utime hoặc ISO datetime có múi giờ hợp lệ; thiếu thì giữ sourcePublishedText, không đoán giờ tuyệt đối từ nhãn tương đối. createdAt vẫn là thời gian lưu/thu thập. UI phân biệt Thu thập / Đăng gốc, raw nhãn hiển thị Facebook lúc cào; số K/M/nghìn/triệu có dấu≈. Bài đã lưu trước thay đổi không tự backfill và bài trùng không bị sửa metadata; áp dụng cho bài mới thu thập.
+
+Kiểm tra độc lập tests/FacebookMetadataChecks dùng Chromium thật với HTML fixture và code mapper production, chặn toàn bộ mạng; không đọc DB/phiên Facebook/Ollama. Chưa chạy thử Facebook thật trong lượt bổ sung; fixture pass không bảo đảm mọi layout Facebook đều đọc được.

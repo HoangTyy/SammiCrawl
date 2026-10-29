@@ -154,7 +154,7 @@ export const TaskQueueView: React.FC<TaskQueueViewProps> = ({
                   <th>Nguồn</th>
                   <th>Tài nguyên</th>
                   <th>{t.queue.colProgress}</th>
-                  <th>Bỏ qua trùng</th>
+                  <th>Bài thu được</th>
                   <th>{t.queue.colStatus}</th>
                   <th className="text-right">{t.queue.colActions}</th>
                 </tr>
@@ -194,8 +194,8 @@ export const TaskQueueView: React.FC<TaskQueueViewProps> = ({
                         {task.clefEvaluatedPosts !== undefined && <small>Phù hợp {task.clefRecommendedPosts ?? 0} · Xem lại {task.clefReviewPosts ?? 0} · Loại {task.clefRejectedPosts ?? 0}</small>}
                       </div>
                     </td>
-                    <td data-label="Bỏ qua trùng">
-                      <span className="latency-text">{task.duplicatesSkipped ?? 0} bài</span>
+                    <td data-label="Bài thu được">
+                      <span className="latency-text">{task.crawledPosts} bài</span>
                     </td>
                     <td data-label="Trạng thái">{getStatusBadge(task.status)}
                       {task.errorCode === 'CLEF_EVALUATION_INCOMPLETE' && <small className="task-status-summary">Clef chưa xong{task.clefEvaluatedPosts !== undefined ? ` · còn ${Math.max(0, task.crawledPosts - task.clefEvaluatedPosts)} bài chờ` : ''}</small>}

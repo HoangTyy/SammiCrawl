@@ -40,7 +40,7 @@ function MainAppShell() {
   useEffect(() => { const update = () => { refresh().catch(e => { setConnection(e.message); setTelemetry(t => ({...t, systemHealth: 0, workerNodesOnline: 0})); }); }; update(); }, [liveRevision]);
   const handleLaunchTarget = (url: string, _targetType: TargetType, maxPosts: number) => {
     let previous = {}; try {previous=JSON.parse(localStorage.getItem('sammicrawl_crawl')??'{}');}catch { /* Start with an empty draft. */ }
-    localStorage.setItem('sammicrawl_crawl',JSON.stringify({...previous,url,maxPosts,targetType:'page'}));setCurrentTab('crawler-studio');
+    localStorage.setItem('sammicrawl_crawl',JSON.stringify({...previous,url,maxPosts,sourceMode:'url',targetType:'page'}));setCurrentTab('crawler-studio');
   };
   const handleDeleteTask = (id: string) => { void api(`/records/tasks/${id}`, undefined, 'DELETE').then(refresh).catch(e => setConnection(e.message)); };
   return <div className="cyber-app-shell"><Navbar onLogout={handleLogout} loggingOut={loggingOut} currentTab={currentTab} onSelectTab={setCurrentTab} telemetry={telemetry} onOpenMissionModal={() => setCurrentTab('crawler-studio')} />

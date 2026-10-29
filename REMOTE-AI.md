@@ -41,7 +41,7 @@ Chạy `docker compose --profile ai-host up -d ai-tunnel`. Connector tự restar
 
 Rewrite cũng nhận trường images: danh sách base64 JPEG/PNG/WebP, tối đa 4 ảnh, mỗi ảnh 5 MB. Bonsai đọc ảnh cùng caption trong một request, vẫn chỉ một model. Bản nháp có rewriteImagesProvided để biết ảnh đã được gửi; không coi đó là xác minh OCR hay tính phù hợp tự động. Video chưa có phân tích khung hình.
 
-Bước đối chiếu ảnh: backend client gọi /bridge/rewrite với mode=read-image và images để phiên âm; UI cho người thao tác sửa/xác nhận. Lần rewrite tiếp theo nhận caption cùng ghi chú đã xác nhận, không nhận lại ảnh. Cả hai lần dùng Bonsai và chạy tuần tự qua gate. Đọc ảnh không tạo bản nháp.
+29/10/2026: Rewrite gửi caption gốc + images trong cùng request. Ảnh chỉ để hiểu ngữ cảnh; Instructions yêu cầu trả caption viết lại, không OCR/mô tả ảnh hay suy đoán chi tiết không rõ. UI bỏ bước sửa/xác nhận ghi chú; không gửi ghi chú do AI đọc trước vào bài viết. Gateway hiện có đã hỗ trợ Images/Instructions nên không cần thêm endpoint hoặc cập nhật gateway riêng cho luồng này. Endpoint mode=read-image còn tương thích, không nằm trong luồng Rewrite. Draft cũ không bị sửa.
 
 ## Gateway gián đoạn — 29/10/2026
 

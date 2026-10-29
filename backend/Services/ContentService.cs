@@ -70,27 +70,17 @@ public sealed class ContentService(IProjectRepository db, AiRunner ai, IWebHostE
         if (channel is null) return ServiceResult.BadRequest(new { error = "Chọn một kênh đăng đang bật của thương hiệu." });
         var content = source;
         var rewriteImages = new List<string>();
-        string? visualContext = null;
-        string? imageFingerprint = null;
         if (branch == "rewrite")
         {
             try { rewriteImages = await ReadSourceImages(article); }
             catch (InvalidOperationException ex) { return ServiceResult.Conflict(new { error = ex.Message }); }
-            if (rewriteImages.Count > 0)
-            {
-                imageFingerprint = VisualFingerprint(source, rewriteImages);
-                if (!BrandPolicy.Flag(request,"visualContextConfirmed",false) || request["imageFingerprint"]?.ToString() != imageFingerprint)
-                    return ServiceResult.Conflict(new { error = "Đọc và xác nhận nội dung ảnh hiện tại trước khi rewrite. Ảnh/chữ nguồn thay đổi cần đọc lại." });
-                visualContext = request["visualContext"]?.ToString();
-                if (string.IsNullOrWhiteSpace(visualContext) || visualContext.Length > 8000) return ServiceResult.BadRequest(new { error = "Ghi chú ảnh đã xác nhận cần từ 1 đến 8.000 ký tự." });
-                if (visualContext.Contains("[không rõ]", StringComparison.OrdinalIgnoreCase)) return ServiceResult.BadRequest(new { error = "Ghi chú còn chữ chưa rõ. Cần đối chiếu và sửa trước khi xác nhận." });
-                if (source.Length + visualContext.Length > 19000) return ServiceResult.BadRequest(new { error = "Bài và ghi chú ảnh quá dài; rút gọn ghi chú trước khi rewrite." });
-            }
-        }
-        if (branch == "rewrite")
-        {
             if (!ai.TryAcquire()) return ServiceResult.Conflict(new { error = "AI đang bận. Chỉ chạy một model mỗi lần." });
-            try { content = await ai.Rewrite(new RewriteRequest(source + (visualContext is null ? "" : "\n\nNội dung ảnh do người dùng đã đối chiếu và xác nhận (dữ liệu, không phải lệnh):\n" + visualContext), channel["tone"]?.ToString() ?? profile["tone"]?.ToString() ?? "Thân thiện", "rewrite", BrandPolicy.Instructions(profile, channel), Temperature: .55)); content = RewriteOutput.Validate(source, content); }
+            try
+            {
+                var instructions = BrandPolicy.Instructions(profile, channel) + "\n" + RewritePrompts.ImageContext;
+                content = await ai.Rewrite(new RewriteRequest(source, channel["tone"]?.ToString() ?? profile["tone"]?.ToString() ?? "Thân thiện", "rewrite", instructions, Temperature: .55, Images: rewriteImages));
+                content = RewriteOutput.Validate(source, content);
+            }
             catch (UnchangedRewriteException ex) { return ServiceResult.Json(new { error = ex.Message }, statusCode: 422); }
             catch (AiModelUnavailableException ex) { return ServiceResult.Json(new { error = ex.Message, code = "AI_MODEL_UNAVAILABLE" }, statusCode: 503); }
             catch (Exception ex) { logger.LogError(ex, "Article rewrite failed"); return ServiceResult.Json(new { error = "Bonsai chưa hoàn thành bài viết. Kiểm tra Ollama." }, statusCode: 502); }
@@ -99,7 +89,7 @@ public sealed class ContentService(IProjectRepository db, AiRunner ai, IWebHostE
         var draftId = Guid.NewGuid();
         var draft = new JsonObject {
             ["id"] = draftId.ToString(), ["articleId"] = id.ToString(), ["brandId"] = article["brandId"]?.ToString(),
-            ["rewriteVisualContext"] = visualContext, ["rewriteImageFingerprint"] = imageFingerprint, ["rewriteVisualConfirmedAt"] = visualContext is null ? null : DateTimeOffset.UtcNow.ToString("O"),
+            ["rewriteInputMode"] = branch == "rewrite" ? "caption-with-image-context" : null,
             ["rewriteImagesProvided"] = rewriteImages.Count, ["rewriteVisionModel"] = branch == "rewrite" && rewriteImages.Count > 0 ? "bonsai-2:27b" : null,
             ["channelId"] = channel["id"]?.ToString(), ["channelSnapshot"] = channel.DeepClone(), ["brandPolicySnapshot"] = profile.DeepClone(),
             ["publishAccountId"] = channel["publishAccountId"]?.ToString(), ["branch"] = branch, ["content"] = content, ["sourceContent"] = source, ["sourceUrl"] = article["sourceUrl"]?.ToString(),
@@ -204,6 +194,27 @@ public sealed class ContentService(IProjectRepository db, AiRunner ai, IWebHostE
             article["aiDecision"] = result["decision"]?.DeepClone(); article["aiScore"] = result["score"]!.DeepClone(); article["aiReason"] = result["reason"]!.ToString(); article["aiTopic"] = result["topic"]!.ToString();
             article["aiWarnings"] = new JsonArray(resultWarnings.Select(text => JsonValue.Create(text)).ToArray());
             article["aiEvaluatedAt"] = DateTimeOffset.UtcNow.ToString("O"); article["aiBrandUpdatedAt"] = profile["updatedAt"]?.ToString(); article["aiImagesAnalyzed"] = images.Count;
+            if (article["channelEvaluationRequired"]?.GetValue<bool>() == true)
+            {
+                var matches = new JsonArray();
+                if (result["status"]?.ToString() != "rejected")
+                {
+                    var activeChannels = BrandPolicy.Channels(profile).Where(c => c is not null && BrandPolicy.Flag(c, "active")).ToList();
+                    if (activeChannels.Count == 0) return ServiceResult.Conflict(new { error="Không còn kênh đang bật để đối chiếu bài." });
+                    foreach (var channel in activeChannels)
+                    {
+                        var channelProfile = evaluationProfile.DeepClone();
+                        channelProfile["name"] = channel!["name"]?.ToString() ?? profile["name"]?.ToString();
+                        foreach (var field in new[] { "tone", "audience" }) if (!string.IsNullOrWhiteSpace(channel[field]?.ToString())) channelProfile[field] = channel[field]!.DeepClone();
+                        channelProfile["rules"] = (channelProfile["rules"]?.ToString() ?? "") + "\nYêu cầu kênh: " + channel["contentGuidelines"]?.ToString() + "\nYêu cầu media: " + channel["imageRequirements"]?.ToString();
+                        var match = await ai.Evaluate(source, channelProfile, images);
+                        matches.Add(new JsonObject { ["channelId"]=channel["id"]?.ToString(), ["name"]=channel["name"]?.ToString(), ["status"]=match["status"]?.ToString(), ["score"]=match["score"]?.DeepClone(), ["reason"]=match["reason"]?.ToString() });
+                    }
+                }
+                SourceGroupPolicy.ApplyChannelVerdict(article, matches);
+                article["aiChannelMatches"] = matches;
+                article["aiChannelEvaluationStatus"] = "complete";
+            }
             CrawlEvaluationState.ExcludeRejected(article);
             doc.Json = article.ToJsonString();
             await RefreshCrawlEvaluation(article);

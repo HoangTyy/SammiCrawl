@@ -65,11 +65,47 @@ public sealed class FacebookCrawlWorker(IServiceScopeFactory scopes, IDataProtec
         if(text.Contains("temporarily blocked")||text.Contains("you're going too fast"))return FacebookAccountHealth.Runtime("RATE_LIMITED");
         return null;
     }
+    async Task<bool> CheckSession(IPage page, Guid taskId, Guid accountId, int count, int duplicates)
+    {
+        var blocked = await Blocked(page); if (blocked is null) return true;
+        using var scope = scopes.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<IProjectRepository>();
+        var account = await db.FindDocumentAsync(accountId, "accounts");
+        if (account is not null) { var data = JsonNode.Parse(account.Json)!.AsObject(); FacebookAccountHealth.Apply(data, blocked, "runtime_error"); account.Json = data.ToJsonString(); await db.SaveChangesAsync(); }
+        await State(taskId, "paused", blocked.Reason, blocked.Code, count, duplicates); return false;
+    }
+    async Task<List<JsonObject>?> DiscoverGroups(IPage page, JsonObject job, Guid taskId, Guid accountId, int count, int duplicates, CancellationToken ct)
+    {
+        var found = new Dictionary<string, JsonObject>(); var limit = job["maxGroups"]!.GetValue<int>();
+        foreach (var keyword in SourceGroupPolicy.Keywords(job["groupKeywords"]?.ToString()))
+        {
+            if (await Cancelled(taskId)) throw new OperationCanceledException();
+            await State(taskId, "running", $"Đang tìm nhóm theo từ khóa: {keyword}", count:count, duplicates:duplicates);
+            await page.GotoAsync("https://www.facebook.com/search/groups/?q=" + Uri.EscapeDataString(keyword), new() { WaitUntil=WaitUntilState.DOMContentLoaded, Timeout=45000 });
+            await Delay(taskId, 2500, ct);
+            for (var scroll = 0; scroll < 3 && found.Count < limit; scroll++)
+            {
+                if (!await CheckSession(page, taskId, accountId, count, duplicates)) return null;
+                var links = await page.EvaluateAsync<string>("""
+                    () => JSON.stringify(Array.from(document.querySelectorAll('a[href*="/groups/"]')).map(a=>({name:(a.innerText||a.getAttribute('aria-label')||'').trim(),url:a.href})).filter(a=>a.name.length>1))
+                    """);
+                foreach (var item in JsonNode.Parse(links)!.AsArray())
+                {
+                    var url = SourceGroupPolicy.CanonicalUrl(item?["url"]?.ToString());
+                    if (url is null || found.ContainsKey(url)) continue;
+                    found[url] = new JsonObject { ["url"]=url, ["name"]=item!["name"]!.ToString()[..Math.Min(300,item["name"]!.ToString().Length)], ["keyword"]=keyword };
+                    if (found.Count >= limit) break;
+                }
+                if (found.Count < limit) { await page.Mouse.WheelAsync(0, 800); await Delay(taskId, 1800, ct); }
+            }
+            if (found.Count >= limit) break;
+        }
+        return found.Values.ToList();
+    }
     async Task Run(Guid id,CancellationToken ct)
     {
         JsonObject job;List<Guid> accountIds;
         using(var s=scopes.CreateScope()){var d=await s.ServiceProvider.GetRequiredService<IProjectRepository>().FindDocumentAsync(id,"tasks");job=JsonNode.Parse(d!.Json)!.AsObject();accountIds=job["crawlAccountIds"]!.AsArray().Select(n=>Guid.Parse(n!.ToString())).ToList();}
-        var target=job["url"]!.ToString();var brandId=Guid.Parse(job["brandId"]!.ToString());var max=job["maxPosts"]!.GetValue<int>();var count=0;var dup=0;var evaluation=new CrawlEvaluationState();var seen=new HashSet<string>();
+        var target=job["url"]!.ToString();var searchGroups=job["sourceMode"]?.ToString()=="group-search";var groupCounts=new Dictionary<string,int>();var visitedGroups=new HashSet<string>();var brandId=Guid.Parse(job["brandId"]!.ToString());var max=job["maxPosts"]!.GetValue<int>();var count=0;var dup=0;var evaluation=new CrawlEvaluationState();var seen=new HashSet<string>();
         await State(id,"running","Bắt đầu thu thập bằng phiên Facebook đã lưu.",count:0);
         using var pw=await Playwright.CreateAsync();await using var browser=await pw.Chromium.LaunchAsync(new(){Headless=true,Timeout=30000});
         foreach(var accountId in accountIds)
@@ -86,19 +122,42 @@ public sealed class FacebookCrawlWorker(IServiceScopeFactory scopes, IDataProtec
             if(raw.TrimStart().StartsWith('[')||raw.TrimStart().StartsWith('{')){var node=JsonNode.Parse(raw);foreach(var c in node as JsonArray??node?["cookies"]!.AsArray()??new JsonArray())if(c?["name"] is not null)cookies.Add(new(){Name=c["name"]!.ToString(),Value=c["value"]!.ToString(),Domain=".facebook.com",Path="/",Secure=true});}
             else foreach(var item in raw.Split(';')){var pair=item.Trim().Split('=',2);if(pair.Length==2)cookies.Add(new(){Name=pair[0],Value=pair[1],Domain=".facebook.com",Path="/",Secure=true});}
             await using var context=await browser.NewContextAsync(new(){Locale="vi-VN",ViewportSize=new(){Width=1365,Height=900}});await context.AddCookiesAsync(cookies);
-            var page=await context.NewPageAsync();await page.GotoAsync(target,new(){WaitUntil=WaitUntilState.DOMContentLoaded,Timeout=45000});await page.WaitForTimeoutAsync(2500);
+            var page=await context.NewPageAsync();
+            var targets=searchGroups ? await DiscoverGroups(page,job,id,accountId,count,dup,ct) : new List<JsonObject> { new() { ["url"]=target } };
+            if(targets is null)return;
             var perAccount=0;
-            for(var scroll=0;scroll<job["maxScrolls"]!.GetValue<int>()&&count<max&&perAccount<job["accountPostLimit"]!.GetValue<int>();scroll++)
+            foreach(var group in targets)
+            {
+            if(count>=max||perAccount>=job["accountPostLimit"]!.GetValue<int>())break;
+            target=group["url"]!.ToString();
+            if(searchGroups && !visitedGroups.Contains(target) && visitedGroups.Count>=job["maxGroups"]!.GetValue<int>())continue;
+            visitedGroups.Add(target);
+            var groupLimit=searchGroups?job["groupPostLimit"]!.GetValue<int>():max;
+            if(groupCounts.GetValueOrDefault(target)>=groupLimit)continue;
+            Guid? sourceGroupId=null;
+            if(searchGroups)
+            {
+                using var scope=scopes.CreateScope();
+                sourceGroupId=await scope.ServiceProvider.GetRequiredService<IProjectRepository>().TrackSourceGroupAsync(brandId,group["name"]!.ToString(),target,group["keyword"]!.ToString(),accountId,id);
+                await State(id,"running",$"Đang thu thập nhóm {group["name"]}; sẽ đánh giá Clef và đối chiếu các kênh.",count:count,duplicates:dup,evaluation:evaluation);
+            }
+            await page.GotoAsync(target,new(){WaitUntil=WaitUntilState.DOMContentLoaded,Timeout=45000});await Delay(id,2500,ct);
+            if(!await CheckSession(page,id,accountId,count,dup))return;
+            if(searchGroups)
+            {
+                var body=(await page.Locator("body").InnerTextAsync()).ToLowerInvariant();
+                if(body.Contains("this content isn't available")||body.Contains("nội dung này hiện không hiển thị")||body.Contains("join this group to see"))
+                { await State(id,"running",$"Không đọc được nội dung nhóm {group["name"]}; bỏ qua, không tự tham gia nhóm.",count:count,duplicates:dup,evaluation:evaluation);continue; }
+            }
+            for(var scroll=0;scroll<job["maxScrolls"]!.GetValue<int>()&&count<max&&perAccount<job["accountPostLimit"]!.GetValue<int>()&&groupCounts.GetValueOrDefault(target)<groupLimit;scroll++)
             {
                 if(await Cancelled(id))throw new OperationCanceledException();
-                var blocked=await Blocked(page);if(blocked is not null)
-                {
-                    using var s=scopes.CreateScope();var db=s.ServiceProvider.GetRequiredService<IProjectRepository>();var a=await db.FindDocumentAsync(accountId,"accounts");var aj=JsonNode.Parse(a!.Json)!.AsObject();FacebookAccountHealth.Apply(aj,blocked,"runtime_error");a.Json=aj.ToJsonString();await db.SaveChangesAsync();await State(id,"paused",blocked.Reason,blocked.Code,count,dup);return;
-                }
+                if(!await CheckSession(page,id,accountId,count,dup))return;
                 // Expand only visible post text; never click reactions, shares or join controls.
                 var more=page.GetByRole(AriaRole.Button,new(){Name="Xem thêm",Exact=true});
                 for(var k=0;k<Math.Min(await more.CountAsync(),12);k++){try{if(await more.Nth(k).IsVisibleAsync())await more.Nth(k).ClickAsync(new(){Timeout=1500});}catch{/* text may have rerendered */}}
-                var json=await page.EvaluateAsync<string>("""
+                var metadataCapturedAt = DateTimeOffset.UtcNow;
+                var json=await page.EvaluateAsync<string>("(() => { const metadata = " + FacebookPostMetadata.Script + "; return (" + """
                 () => JSON.stringify(Array.from(document.querySelectorAll('h2')).map(h=>{
                   let n=h;
                   for(let i=0;n&&i<14;i++,n=n.parentElement){
@@ -112,14 +171,14 @@ public sealed class FacebookCrawlWorker(IServiceScopeFactory scopes, IDataProtec
                     let text=message?.innerText;
                     if(!text){text=n.innerText;let split=text.indexOf('·\n');if(split>=0)text=text.slice(split+2);else{text=text.replace(/^(Facebook\n)+/,'');const lines=text.split('\n');const author=lines.indexOf(h.innerText);if(author>=0)text=lines.slice(author+2).join('\n');}text=text.split('Đã chia sẻ bài viết')[0].split('Shared post')[0];}
                     text=text.replace(/Ẩn bớt|See less/g,'').trim();
-                    return {sourceUrl:source,content:text,author:h.innerText,images:Array.from(n.querySelectorAll('img')).filter(i=>i.naturalWidth>200).map(i=>i.currentSrc),videos:Array.from(n.querySelectorAll('video')).map(v=>v.currentSrc)};
+                    return {sourceUrl:source,content:text,author:h.innerText,metadata:metadata(n,source),images:Array.from(n.querySelectorAll('img')).filter(i=>i.naturalWidth>200).map(i=>i.currentSrc),videos:Array.from(n.querySelectorAll('video')).map(v=>v.currentSrc)};
                   }return null;
                 }).filter(Boolean))
-                """);
+                """ + ")(); })()");
                 var candidates=JsonNode.Parse(json)!.AsArray();if(candidates.Count==0&&scroll%5==0)await State(id,"running",$"Chưa nhận diện bài mới ở lần cuộn {scroll+1}; tiếp tục trong giới hạn đã đặt.",count:count,duplicates:dup);
                 foreach(var candidate in candidates)
                 {
-                    if(count>=max||perAccount>=job["accountPostLimit"]!.GetValue<int>())break;
+                    if(count>=max||perAccount>=job["accountPostLimit"]!.GetValue<int>()||groupCounts.GetValueOrDefault(target)>=groupLimit)break;
                     var source=candidate!["sourceUrl"]!.ToString();var sourceKey=ArticleDeduplication.SourceKey(source);if(sourceKey is null||!seen.Add(sourceKey))continue;
                     // Delay between processed posts, including duplicates; this is not anti-detection evasion.
                     if(seen.Count>1)await Delay(id,Random.Shared.Next(job["delayMinMs"]!.GetValue<int>(),job["delayMaxMs"]!.GetValue<int>()+1),ct);
@@ -131,13 +190,15 @@ public sealed class FacebookCrawlWorker(IServiceScopeFactory scopes, IDataProtec
                     foreach(var src in candidate["videos"]!.AsArray().Select(n=>n!.ToString()).Distinct().Take(4))
                     {var m=await Download(context,src,"video",id,ct);if(m is not null)media.Add(m);else warnings.Add("Video chưa tải được file gốc; không coi media là đầy đủ.");}
                     var article=new JsonObject{["content"]=candidate["content"]!.ToString(),["title"]=candidate["content"]!.ToString()[..Math.Min(100,candidate["content"]!.ToString().Length)],["sourceUrl"]=source,["sourceAccountId"]=accountId.ToString(),["crawlTaskId"]=id.ToString(),["media"]=media,["mediaWarnings"]=warnings,["aiStatus"]="pending",["sourceAuthor"]=candidate["author"]!.ToString(),["crawlTopicDescription"]=job["topicDescription"]?.ToString()};
+                    FacebookPostMetadata.Apply(article, candidate["metadata"], metadataCapturedAt);
+                    if(sourceGroupId.HasValue) { article["sourceGroupId"]=sourceGroupId.Value.ToString(); article["sourceGroupName"]=group["name"]!.ToString(); article["sourceGroupUrl"]=target; article["channelEvaluationRequired"]=true; }
                     using(var s=scopes.CreateScope())
                     {
                         var result=await s.ServiceProvider.GetRequiredService<IProjectRepository>().IngestArticleAsync(brandId,article);
                         if(result.Duplicate){dup++;foreach(var m in media){var path=BrandPolicy.LocalMedia(env.ContentRootPath,m?["url"]?.ToString());if(path is not null)File.Delete(path);}}
                         else
                         {
-                            count++;perAccount++;
+                            count++;perAccount++;groupCounts[target]=groupCounts.GetValueOrDefault(target)+1;
                             await State(id,"running",$"Đã thu thập {count}/{max} bài; đang đánh giá Clef bài vừa thu thập.",count:count,duplicates:dup,evaluation:evaluation);
                             if(await Cancelled(id))throw new OperationCanceledException();
                             var assessed=await s.ServiceProvider.GetRequiredService<IContentService>().EvaluateArticle(result.Record.Id);
@@ -155,6 +216,7 @@ public sealed class FacebookCrawlWorker(IServiceScopeFactory scopes, IDataProtec
                     await State(id,"running",$"Đã thu thập {count}/{max} bài; Clef {evaluation.Evaluated}/{count}: phù hợp {evaluation.Recommended}, cần xem lại {evaluation.Review}, đã loại {evaluation.Rejected}; bỏ qua {dup} bài trùng.",count:count,duplicates:dup,evaluation:evaluation);
                 }
                 if(count<max){await page.Mouse.WheelAsync(0,850);await Delay(id,Random.Shared.Next(1500,3001),ct);}
+            }
             }
             if(count<max)await Delay(id,Random.Shared.Next(job["accountRestMinMs"]!.GetValue<int>(),job["accountRestMaxMs"]!.GetValue<int>()+1),ct);
         }

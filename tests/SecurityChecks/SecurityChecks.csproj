@@ -16,5 +16,6 @@
     <Compile Include="../../backend/Services/AiModelUnavailableException.cs" Link="Services/AiModelUnavailableException.cs" />
     <Compile Include="../../backend/Services/AiGatewayException.cs" Link="Services/AiGatewayException.cs" />
     <Compile Include="../../backend/Services/AiGatewayClient.cs" Link="Services/AiGatewayClient.cs" />
+    <Compile Include="../../backend/Services/SourceGroupPolicy.cs" Link="Services/SourceGroupPolicy.cs" />
   </ItemGroup>
 </Project>

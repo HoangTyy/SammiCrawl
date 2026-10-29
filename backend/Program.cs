@@ -23,6 +23,7 @@ builder.Services.AddScoped<FacebookLoginService>();
 builder.Services.AddScoped<ArticleIngestService>();
 builder.Services.AddScoped<ISystemService, SystemService>();
 builder.Services.AddScoped<IWorkflowsService, WorkflowsService>();
+builder.Services.AddScoped<SourceGroupsService>();
 builder.Services.AddScoped<IContentService, ContentService>();
 builder.Services.AddScoped<IContentReportService, ContentReportService>();
 builder.Services.AddScoped<IChannelsService, ChannelsService>();

@@ -24,6 +24,7 @@ public sealed class CrawlEvaluationState
             || !double.TryParse(article["aiScore"]?.ToString(), System.Globalization.NumberStyles.Float,
                 System.Globalization.CultureInfo.InvariantCulture, out var score) || !double.IsFinite(score) || score < 0 || score > 100)
             return false;
+        if (article["channelEvaluationRequired"]?.GetValue<bool>() == true && article["aiChannelEvaluationStatus"]?.ToString() != "complete") return false;
         switch (article["aiStatus"]?.ToString())
         {
             case "recommended": Recommended++; break;

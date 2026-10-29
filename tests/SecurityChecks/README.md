@@ -38,3 +38,5 @@ Cào + Clef: tổng70 assertion, thêm16 kiểm tra availability (offline/thiế
 Tổng73 assertion: thêm3 kiểm tra readiness Bonsai offline/thiếu27b (chỉ có9b)/đúng27b; không tải model hoặc chạy suy luận thật.
 
 GatewayRetryChecks dùng HttpMessageHandler giả với client production:83 assertion tổng; bao phủ502 rồi thành công,502 lặp tối đa2lần, không retry409/429/auth/output/rewrite và phân loại timeout/JSON. Không dùng DB, Ollama hoặc Facebook thật.
+
+Nhóm nguồn: tổng92 assertion; thêm9 kiểm tra URL nhóm, chống URL giả/post/navigation, từ khóa bounded, ID ổn định theo brand, accepted không gồm review/deleted, kết luận kênh và chặn hoàn tất khi đánh giá kênh chưa xong. Không chạy Facebook/AI thật.

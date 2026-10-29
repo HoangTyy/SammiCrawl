@@ -22,7 +22,24 @@ public sealed class WorkflowsService(IProjectRepository db, AiRunner ai, Faceboo
         if (!Guid.TryParse(config["brandId"]?.ToString(), out var brandId)) return ServiceResult.BadRequest(new { error = "Chọn thương hiệu trước khi chạy." });
         var brand = await db.FindDocumentAsync(brandId, "brands");
         if (brand is null || JsonNode.Parse(brand.Json)?["deletedAt"] is not null) return ServiceResult.BadRequest(new { error = "Thương hiệu không còn hoạt động." });
-        if (!Uri.TryCreate(config["url"]?.ToString(), UriKind.Absolute, out var url) || url.Scheme != "https" || !(url.Host == "facebook.com" || url.Host.EndsWith(".facebook.com"))) return ServiceResult.BadRequest(new { error = "Nhập URL Page Facebook hợp lệ." });
+        var mode = config["sourceMode"]?.ToString() ?? "url";
+        if (mode is not ("url" or "group-search")) return ServiceResult.BadRequest(new { error = "Cách chọn nguồn không hợp lệ." });
+        Uri? url = null;
+        if (mode == "url" && (!Uri.TryCreate(config["url"]?.ToString(), UriKind.Absolute, out url) || url.Scheme != "https" || !(url.Host == "facebook.com" || url.Host.EndsWith(".facebook.com")))) return ServiceResult.BadRequest(new { error = "Nhập URL Facebook hợp lệ." });
+        if (mode == "group-search")
+        {
+            var brandProfile = JsonNode.Parse(brand.Json)!;
+            var text = config["groupKeywords"]?.ToString();
+            if (string.IsNullOrWhiteSpace(text)) text = string.IsNullOrWhiteSpace(brandProfile["allowedTopics"]?.ToString()) ? brandProfile["name"]?.ToString() : brandProfile["allowedTopics"]!.ToString();
+            var keywords = SourceGroupPolicy.Keywords(text);
+            if (keywords.Length == 0 || keywords.Any(k => k.Length > 200)) return ServiceResult.BadRequest(new { error = "Nhập tối đa 6 từ khóa tìm nhóm, mỗi từ khóa tối đa 200 ký tự." });
+            foreach (var key in new[] { "maxGroups", "groupPostLimit" })
+                if (config[key] is not JsonValue v || !v.TryGetValue<int>(out var n) || n < 1 || n > (key == "maxGroups" ? 20 : 1000)) return ServiceResult.BadRequest(new { error = $"Thông số {key} không hợp lệ." });
+            if (!BrandPolicy.Channels(brandProfile).Any(c => c is not null && BrandPolicy.Flag(c, "active"))) return ServiceResult.BadRequest(new { error = "Thêm ít nhất một kênh đang bật để Clef đối chiếu bài với kênh." });
+            config["groupKeywords"] = string.Join("\n", keywords);
+            config["url"] = "https://www.facebook.com/search/groups/?q=" + Uri.EscapeDataString(keywords[0]);
+        }
+        config["sourceMode"] = mode;
         foreach (var (field, min, max) in new (string, double, double)[] { ("maxPosts", 1, 1000), ("maxScrolls", 1, 2000), ("delayMinMs", 500, 120000), ("delayMaxMs", 500, 120000), ("minLikes", 0, 10000000), ("minComments", 0, 10000000), ("accountPostLimit", 1, 1000), ("accountRestMinMs", 1000, 3600000), ("accountRestMaxMs", 1000, 3600000) })
             if (config[field] is not JsonValue v || !v.TryGetValue<double>(out var n) || n < min || n > max || n != Math.Truncate(n)) return ServiceResult.BadRequest(new { error = $"Thông số {field} không hợp lệ." });
         if (config["delayMinMs"]!.GetValue<double>() > config["delayMaxMs"]!.GetValue<double>() || config["accountRestMinMs"]!.GetValue<double>() > config["accountRestMaxMs"]!.GetValue<double>()) return ServiceResult.BadRequest(new { error = "Khoảng nghỉ min không được lớn hơn max." });
@@ -32,7 +49,9 @@ public sealed class WorkflowsService(IProjectRepository db, AiRunner ai, Faceboo
         if (missing > 0) return ServiceResult.BadRequest(new { error = $"Có {missing} tài khoản cào đang bật nhưng chưa có phiên đăng nhập. Cập nhật phiên hoặc tạm ngưng tài khoản đó." });
         if (CrawlCapacity.Validate(config["maxPosts"]!.GetValue<int>(), accounts.Count, config["accountPostLimit"]!.GetValue<int>()) is string capacityError)
             return ServiceResult.BadRequest(new { error = capacityError, code = "CRAWL_CAPACITY_EXCEEDED" });
-        config["crawlAccountIds"] = new JsonArray(accounts.Select(a => JsonValue.Create(a.Id.ToString())).ToArray()); config["extractMedia"] = true; config["targetType"] = url.AbsolutePath.StartsWith("/groups/") ? "group" : "page";
+        if (mode == "group-search" && config["maxPosts"]!.GetValue<int>() > (long)config["maxGroups"]!.GetValue<int>() * config["groupPostLimit"]!.GetValue<int>())
+            return ServiceResult.BadRequest(new { error="Tổng số bài vượt số nhóm tối đa × số bài tối đa mỗi nhóm.", code="GROUP_CAPACITY_EXCEEDED" });
+        config["crawlAccountIds"] = new JsonArray(accounts.Select(a => JsonValue.Create(a.Id.ToString())).ToArray()); config["extractMedia"] = true; config["targetType"] = mode == "group-search" || url!.AbsolutePath.StartsWith("/groups/") ? "group" : "page";
         if(worker.IsBusy)return ServiceResult.Conflict(new{error="Đang có lượt cào chạy. Chờ hoàn tất hoặc dừng lượt hiện tại."});
         if(config["includeComments"]?.GetValue<bool>()==true)return ServiceResult.BadRequest(new{error="Worker hiện thu thập bài và media, chưa hỗ trợ bình luận. Bỏ chọn Thu thập bình luận trước khi chạy."});
         if(config["minLikes"]!.GetValue<int>()>0||config["minComments"]!.GetValue<int>()>0)return ServiceResult.BadRequest(new{error="Bộ lọc tương tác chưa hỗ trợ trên worker hiện tại; đặt tối thiểu về 0."});

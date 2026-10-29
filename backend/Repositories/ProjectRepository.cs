@@ -26,6 +26,20 @@ public sealed class ProjectRepository(Store store, LiveUpdates liveUpdates) : IP
         store.Documents.Add(saved); await store.SaveChangesAsync(); await tx.CommitAsync(); liveUpdates.Notify(); return (saved, false, null);
     }
 
+    public async Task<Guid> TrackSourceGroupAsync(Guid brandId, string name, string url, string keyword, Guid accountId, Guid taskId)
+    {
+        url = SourceGroupPolicy.CanonicalUrl(url) ?? throw new InvalidOperationException("URL nhóm không hợp lệ.");
+        var id = SourceGroupPolicy.Id(brandId, url);
+        await using var tx = await store.Database.BeginTransactionAsync();
+        if (store.Database.IsNpgsql()) await store.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended({id.ToString()}, 0))");
+        var doc = await store.Documents.SingleOrDefaultAsync(d => d.Id == id && d.Kind == "sourceGroups");
+        var data = doc is null ? new System.Text.Json.Nodes.JsonObject { ["id"] = id.ToString(), ["brandId"] = brandId.ToString(), ["firstSeenAt"] = DateTimeOffset.UtcNow.ToString("O") } : System.Text.Json.Nodes.JsonNode.Parse(doc.Json)!.AsObject();
+        data["name"] = name[..Math.Min(name.Length, 300)]; data["url"] = url; data["searchKeyword"] = keyword;
+        data["lastSeenAt"] = DateTimeOffset.UtcNow.ToString("O"); data["lastAccountId"] = accountId.ToString(); data["lastTaskId"] = taskId.ToString();
+        if (doc is null) store.Documents.Add(new Document { Id = id, Kind = "sourceGroups", Json = data.ToJsonString() }); else doc.Json = data.ToJsonString();
+        await store.SaveChangesAsync(); await tx.CommitAsync(); liveUpdates.Notify(); return id;
+    }
+
     public Task<Document?> FindDocumentAsync(Guid id, string kind) => store.Documents.SingleOrDefaultAsync(d => d.Id == id && d.Kind == kind);
     public Task<Document?> FindJobAsync(Guid id) => store.Documents.SingleOrDefaultAsync(d => d.Id == id && (d.Kind == "tasks" || d.Kind == "runs"));
     public Task<List<Document>> ListDocumentsAsync(string kind) => store.Documents.Where(d => d.Kind == kind).OrderByDescending(d => d.CreatedAt).ToListAsync();
