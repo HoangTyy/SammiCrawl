@@ -30,3 +30,6 @@ Thumbs.db
 work/
 
 config/*.local.env
+
+# Local dotenv file accidentally saved without the leading dot
+/env

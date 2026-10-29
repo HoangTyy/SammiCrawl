@@ -21,17 +21,15 @@ public class AiRunner
             remote.DefaultRequestHeaders.Authorization=new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer",key);
         }
     }
-    async Task<JsonObject> RemotePost(string path,object payload)
-    {
-        using var response=await remote!.PostAsJsonAsync(path,payload);response.EnsureSuccessStatusCode();
-        return JsonNode.Parse(await response.Content.ReadAsStringAsync())!.AsObject();
-    }
+    Task<JsonObject> RemotePost(string path,object payload) => AiGatewayClient.PostAsync(remote!,path,payload);
     public bool TryAcquire() => gate.Wait(0);
     public void Release() => gate.Release();
     public async Task<object> Status() { try { if(remote is not null){using var r=await remote.GetAsync("bridge/health");r.EnsureSuccessStatusCode();return JsonNode.Parse(await r.Content.ReadAsStringAsync())!;} var response = await http.GetAsync("/api/tags"); response.EnsureSuccessStatusCode(); var tags = JsonNode.Parse(await response.Content.ReadAsStringAsync()); return new { online = true, busy = gate.CurrentCount == 0, models = tags?["models"]?.AsArray().Select(m => m?["name"]?.ToString()).ToArray() }; } catch { return new { online = false, busy = gate.CurrentCount == 0, models = Array.Empty<string>() }; } }
     public async Task<string> Rewrite(RewriteRequest r)
     {
         if (AiImages.Validate(r.Images) is string imageError) throw new InvalidOperationException(imageError);
+        if (AiModelUnavailableException.CheckBonsai(System.Text.Json.JsonSerializer.SerializeToNode(await Status())) is string unavailable)
+            throw new AiModelUnavailableException(unavailable);
         if(remote is not null)return RewriteOutput.Validate(r.Text,(await RemotePost("bridge/rewrite",r))["text"]?.ToString()??"");
         const string model = "bonsai-2:27b";
         var ps = await http.GetFromJsonAsync<JsonObject>("/api/ps");
@@ -99,17 +97,17 @@ public class AiRunner
             if (System.Text.Encoding.UTF8.GetByteCount(state.ToJsonString() + questions.ToJsonString()) > 60000) throw new InvalidOperationException("Hồ sơ và bài quá dài cho request Clef.");
             using var response = await http.PostAsJsonAsync("/v1/systemone", new { model, state, questions, images, keep_alive = 0 });
             response.EnsureSuccessStatusCode();
-            var answers = JsonNode.Parse(await response.Content.ReadAsStringAsync())?["answers"] as JsonObject ?? throw new InvalidOperationException("Clef thiếu answers.");
+            var answers = JsonNode.Parse(await response.Content.ReadAsStringAsync())?["answers"] as JsonObject ?? throw AiGatewayException.InvalidOutput();
             var status = answers["fit"]?["choice"]?.ToString();
             var topicKey = answers["topic"]?["choice"]?.ToString(); var reasonKey = answers["reason"]?["choice"]?.ToString();
             var reasons = new Dictionary<string, string> { ["on_topic"] = "Clef chọn: đúng chủ đề và đối tượng.", ["off_topic"] = "Clef chọn: ngoài nhóm chủ đề cho phép.", ["restricted"] = "Clef chọn: có nội dung thuộc diện cấm.", ["unverified"] = "Clef chọn: thông tin cần được kiểm chứng.", ["media_unclear"] = "Clef chọn: hình ảnh chưa rõ hoặc chưa phù hợp.", ["unclear"] = "Clef chọn: chưa đủ thông tin để kết luận." };
             if (status is not ("recommended" or "review" or "rejected") || topicKey is null || !topicOptions.ContainsKey(topicKey) || reasonKey is null || !reasons.ContainsKey(reasonKey)
                 || answers["suitability"]?["score"] is not JsonValue scoreValue || !scoreValue.TryGetValue<double>(out var score) || !double.IsFinite(score) || score < 0 || score > 4)
-                throw new InvalidOperationException("Clef trả lựa chọn hoặc điểm không hợp lệ.");
+                throw AiGatewayException.InvalidOutput();
             var warnings = new JsonArray();
             foreach (var (key, label) in new[] { ("source_risk", "Clef yêu cầu kiểm chứng nguồn, số liệu hoặc thời hạn."), ("media_risk", "Clef yêu cầu xem lại ảnh và nhận diện trước khi sử dụng.") })
             {
-                if (answers[key]?["noul"] is not JsonValue probabilityValue || !probabilityValue.TryGetValue<double>(out var probability) || !double.IsFinite(probability) || probability < 0 || probability > 1) throw new InvalidOperationException("Clef trả xác suất không hợp lệ.");
+                if (answers[key]?["noul"] is not JsonValue probabilityValue || !probabilityValue.TryGetValue<double>(out var probability) || !double.IsFinite(probability) || probability < 0 || probability > 1) throw AiGatewayException.InvalidOutput();
                 if (probability >= .5) warnings.Add(label);
             }
             return new JsonObject { ["status"] = status, ["score"] = (int)Math.Round(score * 25), ["reason"] = reasons[reasonKey], ["topic"] = topicOptions[topicKey]!.ToString(), ["warnings"] = warnings, ["decision"] = answers.DeepClone() };

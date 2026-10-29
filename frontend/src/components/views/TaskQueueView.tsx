@@ -173,7 +173,6 @@ export const TaskQueueView: React.FC<TaskQueueViewProps> = ({
                         >
                           {task.url} <ExternalLink size={10} />
                         </a>
-                        {task.errorReason&&<small className="task-worker-message">{task.errorCode ? `${task.errorCode}: ` : ''}{task.errorReason}</small>}
                       </div>
                     </td>
                     <td data-label="Nguồn">
@@ -190,13 +189,18 @@ export const TaskQueueView: React.FC<TaskQueueViewProps> = ({
                             style={{ width: `${task.progress}%` }}
                           ></div>
                         </div>
-                        <span className="progress-num">{task.crawledPosts}/{task.maxPosts} ({task.progress}%)</span>
+                        <span className="progress-num">{task.crawledPosts}/{task.maxPosts} bài thu thập ({task.progress}%)</span>
+                        <small>{task.clefEvaluatedPosts === undefined ? 'Chưa có thống kê Clef' : `Clef: ${task.clefEvaluatedPosts}/${task.crawledPosts}`}</small>
+                        {task.clefEvaluatedPosts !== undefined && <small>Phù hợp {task.clefRecommendedPosts ?? 0} · Xem lại {task.clefReviewPosts ?? 0} · Loại {task.clefRejectedPosts ?? 0}</small>}
                       </div>
                     </td>
                     <td data-label="Bỏ qua trùng">
                       <span className="latency-text">{task.duplicatesSkipped ?? 0} bài</span>
                     </td>
-                    <td data-label="Trạng thái">{getStatusBadge(task.status)}</td>
+                    <td data-label="Trạng thái">{getStatusBadge(task.status)}
+                      {task.errorCode === 'CLEF_EVALUATION_INCOMPLETE' && <small className="task-status-summary">Clef chưa xong{task.clefEvaluatedPosts !== undefined ? ` · còn ${Math.max(0, task.crawledPosts - task.clefEvaluatedPosts)} bài chờ` : ''}</small>}
+                      {task.errorReason && <details className="task-status-details"><summary>Xem chi tiết</summary><p>{task.errorCode && <strong>{task.errorCode}: </strong>}{task.errorReason}</p></details>}
+                    </td>
                     <td data-label="Thao tác" className="text-right">
                       <button 
                         type="button" 

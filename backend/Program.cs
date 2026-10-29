@@ -12,6 +12,9 @@ builder.Services.AddDbContext<Store>(o =>
 });
 builder.Services.AddProjectSecurity();
 builder.Services.AddControllers();
+builder.Services.AddSignalR();
+builder.Services.AddSingleton<LiveUpdates>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<LiveUpdates>());
 builder.Services.AddScoped<IProjectRepository, ProjectRepository>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IRecordsService, RecordsService>();
@@ -39,6 +42,7 @@ if (args.Contains("--seed-demo"))
 }
 app.UseProjectPipeline();
 app.MapControllers();
+app.MapHub<LiveUpdatesHub>("/api/live", options => options.CloseOnAuthenticationExpiration = true);
 app.Map("/api/{**path}", () => Results.NotFound()).WithOrder(int.MaxValue - 1);
 app.MapFallbackToFile("index.html");
 app.Run();

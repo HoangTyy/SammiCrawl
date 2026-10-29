@@ -19,9 +19,18 @@ public sealed class FacebookCrawlWorker(IServiceScopeFactory scopes, IDataProtec
         using (var scope = scopes.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<IProjectRepository>();
+            var articles = (await db.ListDocumentsAsync("articles")).Select(d => JsonNode.Parse(d.Json)!.AsObject())
+                .Where(a => a["crawlTaskId"] is not null).GroupBy(a => a["crawlTaskId"]!.ToString())
+                .ToDictionary(g => g.Key, g => g.ToList());
             foreach (var d in await db.ListDocumentsAsync("tasks"))
             {
                 var j = JsonNode.Parse(d.Json)!.AsObject();
+                if (j["workerNode"]?.ToString() == "Facebook local" && articles.TryGetValue(d.Id.ToString(), out var ownArticles)
+                    && CrawlEvaluationState.RepairIncompleteCompletion(j, ownArticles))
+                {
+                    d.Json = j.ToJsonString();
+                    db.AddLog(new Audit { Message = $"Đã sửa trạng thái tác vụ {d.Id}: Clef chưa đánh giá xong; không tự cào lại." });
+                }
                 if (j["workerNode"]?.ToString() == "Facebook local" && j["status"]?.ToString() is "pending" or "running") { j["status"]="paused";j["errorReason"]="Ứng dụng khởi động lại; không tự chạy lại tác vụ.";d.Json=j.ToJsonString(); }
             }
             await db.SaveChangesAsync();
@@ -34,12 +43,14 @@ public sealed class FacebookCrawlWorker(IServiceScopeFactory scopes, IDataProtec
             finally { Interlocked.Exchange(ref busy, 0); }
         }
     }
-    async Task State(Guid id,string status,string message,string? code=null,int? count=null,int? duplicates=null)
+    async Task State(Guid id,string status,string message,string? code=null,int? count=null,int? duplicates=null,CrawlEvaluationState? evaluation=null)
     {
         using var scope=scopes.CreateScope();var db=scope.ServiceProvider.GetRequiredService<IProjectRepository>();var d=await db.FindDocumentAsync(id,"tasks");if(d is null)return;
         var j=JsonNode.Parse(d.Json)!.AsObject();if(j["status"]?.ToString()=="paused"&&status=="running")throw new OperationCanceledException();
         j["status"]=status;j["errorReason"]=message;j["errorCode"]=code;
-        if(count.HasValue){j["crawledPosts"]=count.Value;j["progress"]=(int)(100.0*count.Value/(j["maxPosts"]?.GetValue<int>()??1));}
+        evaluation?.WriteTo(j);
+        if(count.HasValue)j["crawledPosts"]=count.Value;
+        j["progress"]=CrawlEvaluationState.Progress(status,j["crawledPosts"]?.GetValue<int>()??0,j["maxPosts"]?.GetValue<int>()??1,j["clefEvaluatedPosts"]?.GetValue<int>()??0);
         if(duplicates.HasValue)j["duplicatesSkipped"]=duplicates.Value;
         d.Json=j.ToJsonString();db.AddLog(new Audit{Message=$"Cào {id}: {message}"});await db.SaveChangesAsync();
     }
@@ -58,7 +69,7 @@ public sealed class FacebookCrawlWorker(IServiceScopeFactory scopes, IDataProtec
     {
         JsonObject job;List<Guid> accountIds;
         using(var s=scopes.CreateScope()){var d=await s.ServiceProvider.GetRequiredService<IProjectRepository>().FindDocumentAsync(id,"tasks");job=JsonNode.Parse(d!.Json)!.AsObject();accountIds=job["crawlAccountIds"]!.AsArray().Select(n=>Guid.Parse(n!.ToString())).ToList();}
-        var target=job["url"]!.ToString();var brandId=Guid.Parse(job["brandId"]!.ToString());var max=job["maxPosts"]!.GetValue<int>();var count=0;var dup=0;var savedIds=new List<Guid>();var seen=new HashSet<string>();
+        var target=job["url"]!.ToString();var brandId=Guid.Parse(job["brandId"]!.ToString());var max=job["maxPosts"]!.GetValue<int>();var count=0;var dup=0;var evaluation=new CrawlEvaluationState();var seen=new HashSet<string>();
         await State(id,"running","Bắt đầu thu thập bằng phiên Facebook đã lưu.",count:0);
         using var pw=await Playwright.CreateAsync();await using var browser=await pw.Chromium.LaunchAsync(new(){Headless=true,Timeout=30000});
         foreach(var accountId in accountIds)
@@ -124,23 +135,31 @@ public sealed class FacebookCrawlWorker(IServiceScopeFactory scopes, IDataProtec
                     {
                         var result=await s.ServiceProvider.GetRequiredService<IProjectRepository>().IngestArticleAsync(brandId,article);
                         if(result.Duplicate){dup++;foreach(var m in media){var path=BrandPolicy.LocalMedia(env.ContentRootPath,m?["url"]?.ToString());if(path is not null)File.Delete(path);}}
-                        else{count++;perAccount++;savedIds.Add(result.Record.Id);}
+                        else
+                        {
+                            count++;perAccount++;
+                            await State(id,"running",$"Đã thu thập {count}/{max} bài; đang đánh giá Clef bài vừa thu thập.",count:count,duplicates:dup,evaluation:evaluation);
+                            if(await Cancelled(id))throw new OperationCanceledException();
+                            var assessed=await s.ServiceProvider.GetRequiredService<IContentService>().EvaluateArticle(result.Record.Id);
+                            if(await Cancelled(id))throw new OperationCanceledException();
+                            if(!evaluation.Record(assessed))
+                            {
+                                var reason=(assessed.Value as JsonObject)?["error"]?.ToString()
+                                    ?? (assessed.Value is null ? null : System.Text.Json.JsonSerializer.SerializeToNode(assessed.Value)?["error"]?.ToString())
+                                    ?? "Clef chưa trả kết quả hợp lệ.";
+                                await State(id,"paused",$"Đã thu thập {count}/{max} bài; Clef đánh giá {evaluation.Evaluated}/{count}. {reason} Bài chưa đánh giá được giữ chờ xử lý; tác vụ chưa hoàn thành.","CLEF_EVALUATION_INCOMPLETE",count,dup,evaluation);
+                                return;
+                            }
+                        }
                     }
-                    await State(id,"running",$"Đã lưu {count}/{max} bài; bỏ qua {dup} bài trùng.",count:count,duplicates:dup);
+                    await State(id,"running",$"Đã thu thập {count}/{max} bài; Clef {evaluation.Evaluated}/{count}: phù hợp {evaluation.Recommended}, cần xem lại {evaluation.Review}, đã loại {evaluation.Rejected}; bỏ qua {dup} bài trùng.",count:count,duplicates:dup,evaluation:evaluation);
                 }
                 if(count<max){await page.Mouse.WheelAsync(0,850);await Delay(id,Random.Shared.Next(1500,3001),ct);}
             }
             if(count<max)await Delay(id,Random.Shared.Next(job["accountRestMinMs"]!.GetValue<int>(),job["accountRestMaxMs"]!.GetValue<int>()+1),ct);
         }
-        await State(id,"running",$"Thu thập được {count}/{max} bài. Đang lần lượt đánh giá Clef.",count:count,duplicates:dup);
-        var evaluated=0;
-        foreach(var articleId in savedIds)
-        {
-            if(await Cancelled(id))throw new OperationCanceledException();
-            using var s=scopes.CreateScope();var result=await s.ServiceProvider.GetRequiredService<IContentService>().EvaluateArticle(articleId);if(result.Status==200)evaluated++;
-            await State(id,"running",$"Clef đánh giá {evaluated}/{savedIds.Count} bài; lỗi AI giữ bài ở trạng thái chờ.",count:count,duplicates:dup);
-        }
-        await State(id,count==max?"completed":"paused",$"Đã lưu {count}/{max} bài, bỏ qua {dup} bài trùng; Clef đã đánh giá {evaluated}. Không đăng Facebook.",count==max?null:"SOURCE_EXHAUSTED",count,dup);
+        var complete=count==max&&evaluation.Evaluated==count;
+        await State(id,complete?"completed":"paused",$"Đã thu thập {count}/{max} bài; Clef đánh giá {evaluation.Evaluated}/{count}: phù hợp {evaluation.Recommended}, cần xem lại {evaluation.Review}, đã loại {evaluation.Rejected}; bỏ qua {dup} bài trùng. Không đăng Facebook.",complete?null:"SOURCE_EXHAUSTED",count,dup,evaluation);
     }
     async Task<JsonObject?> Download(IBrowserContext context,string src,string kind,Guid job,CancellationToken ct)
     {

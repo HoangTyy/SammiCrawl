@@ -1,3 +1,4 @@
+import { useLiveRevision, LiveEditNotice } from '../../liveUpdates';
 import { useDialogKeyboard } from '../useDialogKeyboard';
 import { HelpTooltip } from '../HelpTooltip';
 import { useCallback, useEffect, useState } from 'react';
@@ -10,6 +11,7 @@ const healthLabels: Record<string, string> = { active: 'Facebook hoạt động'
 const safeUrl = (url: string) => { try { const value = new URL(url); return value.protocol === 'https:' && (value.hostname === 'facebook.com' || value.hostname.endsWith('.facebook.com')) ? url : undefined; } catch { return undefined; } };
 const freshChannel = (brandId = ''): Channel => ({ id: '', brandId, name: '', type: 'group', url: '', dailyTarget: 0, minWords: 80, maxWords: 250, active: true, requireBranding: false, publishAccountId: '' });
 export function ChannelsView({ onManageAccounts, onManageBrands }: { onManageAccounts: () => void; onManageBrands: () => void }) {
+ const liveRevision = useLiveRevision();
   const [channels, setChannels] = useState<Channel[]>([]); const [brands, setBrands] = useState<Brand[]>([]); const [accounts, setAccounts] = useState<Account[]>([]);
   const [query, setQuery] = useState(''); const [brandFilter, setBrandFilter] = useState(''); const [typeFilter, setTypeFilter] = useState(''); const [statusFilter, setStatusFilter] = useState('');
   const [draft, setDraft] = useState<Channel | null>(null); const [error, setError] = useState(''); const [busy, setBusy] = useState(false); const [loading, setLoading] = useState(true);
@@ -18,7 +20,7 @@ export function ChannelsView({ onManageAccounts, onManageBrands }: { onManageAcc
     const [items, brandRows, accountRows] = await Promise.all([api<Channel[]>('/channels'), api<Brand[]>('/records/brands'), api<Account[]>('/records/accounts')]);
     setChannels(items); setBrands(brandRows); setAccounts(accountRows);
   }, []);
-  useEffect(() => { void load().catch(e => setError(e.message)).finally(() => setLoading(false)); }, [load]);
+  useEffect(() => { void load().catch(e => setError(e.message)).finally(() => setLoading(false)); }, [load, liveRevision]);
   const update = (patch: Partial<Channel>) => setDraft(value => value ? { ...value, ...patch } : null);
   const publishers = accounts.filter(account => account.role === 'publish');
   const assigned = draft ? accounts.find(account => account.id === draft.publishAccountId) : undefined;
@@ -41,7 +43,7 @@ export function ChannelsView({ onManageAccounts, onManageBrands }: { onManageAcc
       return <tr key={`${channel.brandId}-${channel.id}`}><td data-label="Kênh / thương hiệu"><strong>{channel.name}</strong><small>{channel.brandName}</small><a href={safeUrl(channel.url)} target="_blank" rel="noreferrer">Mở kênh Facebook <ExternalLink size={11} /></a></td><td data-label="Loại"><span className={`channel-kind ${channel.type}`}>{channel.type === 'group' ? 'Group' : 'Page'}</span></td><td data-label="Tài khoản phụ trách"><strong>{publisher?.name ?? (channel.publishAccountId ? 'Tài khoản không còn tồn tại' : 'Chưa gán tài khoản')}</strong>{publisher && <small>{publisher.enabled === false ? 'Tài khoản đang tạm ngưng' : healthLabels[publisher.facebookStatus ?? 'unknown'] ?? 'Chưa xác minh tài khoản'}</small>}<small className="policy-warning">Quyền đăng trên kênh: chưa xác minh</small></td><td data-label="Quy chuẩn">{channel.minWords}–{channel.maxWords} từ<small>{channel.requireBranding ? 'Yêu cầu nhận diện thương hiệu' : 'Theo hướng dẫn hình ảnh'}</small></td><td data-label="Trạng thái kênh"><span className={`channel-state ${channel.active === false ? 'paused' : 'active'}`}><i />{channel.active === false ? 'Tạm ngưng' : 'Đang bật'}</span></td><td data-label="Thao tác"><div className="preset-buttons-row"><button className="btn-preset" disabled={busy} onClick={() => { setDraft(structuredClone(channel)); setError(''); }}><Pencil size={14} /> Sửa</button><button className="btn-preset" disabled={busy} onClick={() => void toggle(channel)}>{channel.active === false ? <PlayCircle size={14} /> : <PauseCircle size={14} />}{channel.active === false ? 'Bật lại' : 'Tạm ngưng'}</button></div></td></tr>;
     })}</tbody></table>{loading ? <p className="workspace-empty">Đang tải kênh đăng…</p> : !visible.length && <p className="workspace-empty">Chưa có kênh khớp bộ lọc.</p>}</div>
     <p className="cyber-hint">{visible.length}/{channels.length} kênh. Gán tài khoản chỉ đặt lựa chọn mặc định khi tạo bản nháp, chưa xác minh quyền đăng Group/Page. Worker kiểm tra quyền và đăng bài chưa triển khai.</p>
-    {draft && <div className="workspace-modal-overlay"><section ref={dialogRef} className="cyber-panel workspace-editor" role="dialog" aria-modal="true" aria-label={draft.id ? 'Sửa kênh đăng' : 'Thêm kênh đăng'}><header><div><h3>{draft.id ? 'Sửa kênh đăng' : 'Thêm kênh đăng'}</h3><p>Đồng bộ với kênh trong hồ sơ thương hiệu</p></div><button className="workspace-icon-button" type="button" disabled={busy} aria-label="Đóng" onClick={() => setDraft(null)}><X size={20} /></button></header>
+    {draft && <div className="workspace-modal-overlay"><section ref={dialogRef} className="cyber-panel workspace-editor" role="dialog" aria-modal="true" aria-label={draft.id ? 'Sửa kênh đăng' : 'Thêm kênh đăng'}><LiveEditNotice /><header><div><h3>{draft.id ? 'Sửa kênh đăng' : 'Thêm kênh đăng'}</h3><p>Đồng bộ với kênh trong hồ sơ thương hiệu</p></div><button className="workspace-icon-button" type="button" disabled={busy} aria-label="Đóng" onClick={() => setDraft(null)}><X size={20} /></button></header>
       <form onSubmit={async event => {
         event.preventDefault(); setBusy(true); setError('');
         try { await api(`/brands/${draft.brandId}/channels${draft.id ? '/' + draft.id : ''}`, { ...draft, brandVersion: draft.id ? draft.brandVersion : brands.find(b => b.id === draft.brandId)?.updatedAt ?? brands.find(b => b.id === draft.brandId)?.createdAt }, draft.id ? 'PUT' : 'POST'); await load(); setDraft(null); }

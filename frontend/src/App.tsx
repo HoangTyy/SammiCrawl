@@ -14,7 +14,10 @@ import { LoginGate } from './components/LoginGate';
 import { api } from './api';
 import type { NavigationTab, CrawlTask, EngineTelemetry, TargetType } from './types';
 import './App.css';
+import { useLiveConnection, useLiveRevision } from './liveUpdates';
 function MainAppShell() {
+  const syncStatus = useLiveConnection();
+  const liveRevision = useLiveRevision();
   const [articleBrandId,setArticleBrandId] = useState('');
   const [loggingOut, setLoggingOut] = useState(false);
   const handleLogout = async () => {
@@ -34,17 +37,17 @@ function MainAppShell() {
     setTasks(items); setLogs(messages.reverse()); setConnection('Đã kết nối PostgreSQL · Worker cào Facebook local · Chưa có worker đăng bài');
     setTelemetry({ activeTargets: items.filter(t => t.status === 'running').length, postsCaptured: items.reduce((n,t) => n + t.crawledPosts,0), queueDepth: items.filter(t => t.status === 'pending').length, systemHealth: 100, apiLatencyMs: Math.round(performance.now()-start), proxyPoolReady: 0, workerNodesOnline: 0 });
   };
-  useEffect(() => { const update = () => { refresh().catch(e => { setConnection(e.message); setTelemetry(t => ({...t, systemHealth: 0, workerNodesOnline: 0})); }); }; update(); const timer = setInterval(update, 10000); return () => clearInterval(timer); }, []);
+  useEffect(() => { const update = () => { refresh().catch(e => { setConnection(e.message); setTelemetry(t => ({...t, systemHealth: 0, workerNodesOnline: 0})); }); }; update(); }, [liveRevision]);
   const handleLaunchTarget = (url: string, _targetType: TargetType, maxPosts: number) => {
     let previous = {}; try {previous=JSON.parse(localStorage.getItem('sammicrawl_crawl')??'{}');}catch { /* Start with an empty draft. */ }
     localStorage.setItem('sammicrawl_crawl',JSON.stringify({...previous,url,maxPosts,targetType:'page'}));setCurrentTab('crawler-studio');
   };
   const handleDeleteTask = (id: string) => { void api(`/records/tasks/${id}`, undefined, 'DELETE').then(refresh).catch(e => setConnection(e.message)); };
   return <div className="cyber-app-shell"><Navbar onLogout={handleLogout} loggingOut={loggingOut} currentTab={currentTab} onSelectTab={setCurrentTab} telemetry={telemetry} onOpenMissionModal={() => setCurrentTab('crawler-studio')} />
-  <div role="status" style={{ padding: '8px 24px', color: 'var(--text-secondary)', fontSize: 13 }}>{connection}</div>
+  <div role="status" style={{ padding: '8px 24px', color: 'var(--text-secondary)', fontSize: 13 }}>{connection} · {syncStatus}</div>
   <main className="cyber-main-canvas">
   {currentTab === 'dashboard' && <DashboardView telemetry={telemetry} logs={logs} onLaunchTarget={handleLaunchTarget} onNavigateToStudio={() => setCurrentTab('crawler-studio')} />}
-  {currentTab === 'crawler-studio' && <CrawlerStudioView onManageAccounts={() => setCurrentTab('facebook-accounts')} onViewArticles={brandId => {setArticleBrandId(brandId);setCurrentTab('data-vault');}} />}
+  {currentTab === 'crawler-studio' && <CrawlerStudioView onManageAccounts={() => setCurrentTab('facebook-accounts')} onViewQueue={() => { setCurrentTab('queue'); void refresh().catch(e => setConnection(e.message)); }} onViewArticles={brandId => {setArticleBrandId(brandId);setCurrentTab('data-vault');}} />}
   {currentTab === 'queue' && <TaskQueueView tasks={tasks} onDeleteTask={handleDeleteTask} onNavigateToStudio={() => setCurrentTab('crawler-studio')} />}
   {currentTab === 'data-vault' && <DataVaultView initialBrandId={articleBrandId} onNavigateToStudio={() => setCurrentTab('crawler-studio')} />}
   {currentTab === 'channels' && <ChannelsView onManageAccounts={() => setCurrentTab('facebook-accounts')} onManageBrands={() => setCurrentTab('proxy-stealth')} />}

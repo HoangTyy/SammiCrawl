@@ -13,7 +13,7 @@ public sealed class ContentReportService(IProjectRepository db) : IContentReport
         var start = new DateTimeOffset(day.ToDateTime(TimeOnly.MinValue), TimeSpan.FromHours(7)); var end = start.AddDays(1);
         var brands = (await db.ListDocumentsAsync("brands")).Select(d => JsonNode.Parse(d.Json)!).Where(b => b["deletedAt"] is null).ToList();
         var activeBrandIds = brands.Select(b => b["id"]!.ToString()).ToHashSet();
-        var articles = (await db.ListDocumentsAsync("articles")).Select(d => JsonNode.Parse(d.Json)!).Where(a => activeBrandIds.Contains(a["brandId"]?.ToString() ?? "")).ToList();
+        var articles = (await db.ListDocumentsAsync("articles")).Select(d => JsonNode.Parse(d.Json)!).Where(a => a["deletedAt"] is null && activeBrandIds.Contains(a["brandId"]?.ToString() ?? "")).ToList();
         var drafts = (await db.ListDocumentsAsync("drafts")).Select(d => JsonNode.Parse(d.Json)!).Where(d => activeBrandIds.Contains(d["brandId"]?.ToString() ?? "")).ToList();
         bool Within(JsonNode node, string field) => DateTimeOffset.TryParse(node[field]?.ToString(), out var instant) && instant >= start && instant < end;
         bool Published(JsonNode node) => node["status"]?.ToString() == "published" && BrandPolicy.FacebookPostUrl(node["publishedUrl"]?.ToString()) && Within(node, "publishedAt") && DateTimeOffset.TryParse(node["publishedAt"]?.ToString(), out var publishedAt) && publishedAt <= DateTimeOffset.UtcNow;

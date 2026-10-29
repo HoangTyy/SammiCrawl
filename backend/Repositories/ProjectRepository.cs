@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore;
 namespace SammiCrawl.Backend.Repositories;
 
 // One scoped repository shares the EF unit of work across services in each request.
-public sealed class ProjectRepository(Store store) : IProjectRepository
+public sealed class ProjectRepository(Store store, LiveUpdates liveUpdates) : IProjectRepository
 {
     public async Task<(Document Record, bool Duplicate, string? Reason)> IngestArticleAsync(Guid brandId, System.Text.Json.Nodes.JsonObject article)
     {
@@ -23,7 +23,7 @@ public sealed class ProjectRepository(Store store) : IProjectRepository
         var id = Guid.NewGuid(); article["id"] = id.ToString(); article["brandId"] = brandId.ToString(); article["createdAt"] = DateTimeOffset.UtcNow.ToString("O");
         article["contentHash"] = ArticleDeduplication.ContentKey(article); article["sourceKey"] = ArticleDeduplication.SourceKey(article["sourceUrl"]?.ToString() ?? "");
         var saved = new Document { Id = id, Kind = "articles", Json = article.ToJsonString() };
-        store.Documents.Add(saved); await store.SaveChangesAsync(); await tx.CommitAsync(); return (saved, false, null);
+        store.Documents.Add(saved); await store.SaveChangesAsync(); await tx.CommitAsync(); liveUpdates.Notify(); return (saved, false, null);
     }
 
     public Task<Document?> FindDocumentAsync(Guid id, string kind) => store.Documents.SingleOrDefaultAsync(d => d.Id == id && d.Kind == kind);
@@ -38,7 +38,7 @@ public sealed class ProjectRepository(Store store) : IProjectRepository
     public void AddUser(ProjectUser user) => store.Users.Add(user);
     public void AddLog(Audit audit) => store.Logs.Add(audit);
     public Task ReloadAsync(Document document) => store.Entry(document).ReloadAsync();
-    public Task<int> SaveChangesAsync() => store.SaveChangesAsync();
+    public async Task<int> SaveChangesAsync() { var count = await store.SaveChangesAsync(); if (count > 0) liveUpdates.Notify(); return count; }
     public async Task<bool> TryUpdateBrandAsync(Guid id, string expectedJson, string updatedJson, string auditMessage)
     {
         await using var transaction = await store.Database.BeginTransactionAsync();
@@ -48,6 +48,7 @@ public sealed class ProjectRepository(Store store) : IProjectRepository
         store.Logs.Add(new Audit { Message = auditMessage });
         await store.SaveChangesAsync();
         await transaction.CommitAsync();
+        liveUpdates.Notify();
         return true;
     }
 }

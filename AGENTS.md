@@ -149,3 +149,44 @@ docker run --rm sammicrawl-security-checks
 Mốc kiểm tra hiện tại: 43 assertion đạt, frontend và image app build thành công. Fixture dùng controller/middleware thật với dịch vụ giả, không dùng live DB để dựng dữ liệu test. Đây không phải pentest toàn diện hoặc bằng chứng Facebook chạy thật.
 
 Không tự xóa chức năng xem cookie mà người dùng yêu cầu; không tự đổi connection string/demo credential hoặc viết lại lịch sử Git. Secret đang được track, demo công khai, thu hồi phiên, TLS/trusted proxy và giới hạn media còn lại được ghi trong báo cáo. Cần xử lý các điểm này trước khi mở UI ra Internet; không coi build/test pass là đã an toàn để public.
+
+## Đồng bộ nhiều người dùng — 28/10/2026
+
+- SignalR `/api/live` dùng cookie đăng nhập dự án; negotiate/transport POST vẫn qua CSRF. Hub chỉ gửi sự kiện `DataChanged`, không gửi dữ liệu tài khoản/cookie/nội dung. Gateway port 5081 không cho truy cập hub. Đóng kết nối khi ticket hết hạn; kiểm tra Origin khi mở kết nối.
+- `Services/LiveUpdates.cs` gộp thông báo trong 250 ms. `ProjectRepository` báo thay đổi sau SaveChanges thành công hoặc commit transaction ingest/cập nhật brand thành công. Không phát trước commit.
+- `frontend/src/liveUpdates.tsx`: kết nối khi đã đăng nhập, tự nối lại và tải lại danh sách khi nối lại/focus cửa sổ. Các trang báo cáo/bài viết/kênh/thương hiệu/tài khoản/mẫu cấu hình/thùng rác/hàng đợi dùng chung revision để tải lại; bỏ polling 10 giây ở shell và thư viện bài.
+- Form/modal đang mở giữ state nhập riêng; hiện cảnh báo khi danh sách được làm mới. SignalR không thay thế kiểm tra phiên bản: bảo vệ conditional update brand/kênh vẫn giữ; chưa bổ sung khóa đồng thời cho các loại khác.
+- Phạm vi một process backend, shared project như quyền API hiện có. SQL trực tiếp và thay đổi từ replica khác không tự phát sự kiện; cần tải lại thủ công/focus. Nhiều replica cần backplane và cơ chế báo thay đổi sau commit dùng chung; chưa triển khai trong bản này.
+- Kiểm tra SignalR nằm cùng `tests/SecurityChecks/`: fixture không DB/FB/Ollama, kiểm tra CSRF/auth/port gateway và hai WebSocket client cùng nhận invalidation.
+
+Giới hạn tác vụ cào: mỗi tài khoản chỉ được dùng một lượt; tổng maxPosts phải <= min(1000, số tài khoản cào đủ điều kiện × accountPostLimit). Form hiển thị sức chứa và chặn chạy nếu vượt; API kiểm tra lại danh sách tài khoản thực trước khi tạo task, trả 400 CRAWL_CAPACITY_EXCEEDED. Không tự hạ thông số hoặc quay vòng tài khoản. Mẫu cấu hình có thể lưu để tái sử dụng, nhưng luôn kiểm tra lại sức chứa khi chạy; trần này không bảo đảm lấy đủ bài nếu nguồn ít, trùng bài hoặc lỗi phiên.
+
+## Cào và đánh giá Clef — 28/10/2026
+
+Worker đánh giá Clef tuần tự ngay sau mỗi bài mới được lưu, trước khi xử lý bài tiếp theo. StartCrawl kiểm tra AI online/có clef-flash:latest/không busy trước khi tạo task (không suy luận và không chứng minh endpoint systemone hoạt động). Giữ singleton gate, không chạy song song model. Nếu đánh giá lỗi/busy/kết quả không hợp lệ, dừng lượt ở paused/CLEF_EVALUATION_INCOMPLETE, giữ bài pending để đánh giá thủ công, không tự retry Facebook hoặc đổi model.
+
+Task chỉ completed/100% khi đủ số bài thu thập và tất cả có kết quả Clef hợp lệ; running tối đa99%, đủ bài chưa đánh giá là90%. maxPosts và accountPostLimit vẫn tính bài mới thu thập, kể cả bài sau đó bị loại; không tự cào bù số bài không phù hợp. Task lưu clefEvaluatedPosts/clefRecommendedPosts/clefReviewPosts/clefRejectedPosts. Queue hiển thị thống kê và lý do dừng.
+
+ContentService đánh giá rejected thì soft-delete bài với deletedReason=clef_rejected: không còn trong danh sách/báo cáo, không tạo draft; vẫn giữ record/media/kết quả để chống trùng và đối chiếu, không xóa file vật lý. recommended giữ điểm/lý do/chủ đề; review (nhất là media chưa phân tích được) giữ riêng để người duyệt, không tự xem là phù hợp. Draft cũ giữ snapshot, không xóa theo bài nguồn. Không tự áp dụng lại đánh giá cho bài lịch sử.
+
+Khi khởi động, các task Facebook local cũ completed nhưng còn bài gắn crawlTaskId chưa đánh giá được chuyển paused/CLEF_EVALUATION_INCOMPLETE; không replay. Không suy ra task thiếu mọi bài nguồn (đã bị xóa) là lỗi. Khi đánh giá lại thủ công, thống kê task cập nhật; chỉ tự hoàn tất task tạm dừng vì Clef khi đủ bài và đủ kết quả, không tiếp tục cào. Các tác vụ tạm dừng do người dùng không tự resume.
+
+Danh sách Bài viết / media phân trang phía frontend sau bộ lọc, mặc định 10 bài/trang, chọn 10/20/50; đổi bộ lọc hoặc cỡ trang về trang đầu, SignalR cập nhật giữ trang nếu còn hợp lệ. API records/articles vẫn trả toàn bộ danh sách; chưa có phân trang truy vấn DB.
+
+Đọc ảnh/rewrite kiểm tra AI online và có bonsai-2:27b trước khi unload/gửi ảnh/suy luận (cả local/gateway). Thiếu model hoặc mất kết nối trả503 AI_MODEL_UNAVAILABLE với lý do cụ thể ở ContentService; không fallback9b và không tự xác nhận ghi chú. Đây là kiểm tra availability, không bảo đảm model vision suy luận đúng.
+
+Clef đánh giá thủ công: DataVaultView hiển thị tiến độ ước tính và thời gian chờ tại dòng bài, vùng trạng thái và modal. Tăng tối đa90% khi chờ, chỉ100% khi API thành công; lỗi dừng thanh tiến độ và hiện lý do, không tự retry. Đây không phải tiến độ token thật. Kết quả rejected loại bài khỏi state danh sách ngay; modal giữ kết quả và không cho tạo draft từ bài đã loại.
+
+29/10/2026: Modal bài viết cho phép đóng/Escape khi chờ AI (đọc ảnh/rewrite/Clef); chỉ phần mutation lưu/duyệt vẫn khóa đóng khi busy. Đây là đóng UI, không hủy suy luận/yêu cầu đã gửi và không tự retry. Chặn mở bài khác khi đang busy để phản hồi không gán nhầm; đóng rồi mở lại cùng bài giữ ghi chú ảnh vừa nhận trong phiên màn hình. Bonsai đọc ảnh có thanh tiến độ ước tính tối đa90%, thời gian chờ, chỉ100% khi nhận phản hồi; 100% không xác nhận OCR đúng. Vùng nội dung modal min-height0/flex/overflowauto, vùng tiến độ riêng có giới hạn chiều cao. Ghi chú có từ5 dấu [không rõ] trở lên cảnh báo chất lượng/lặp; có nút bỏ ghi chú để đọc lại, không tự xác nhận hoặc tự viết tiếp.
+
+Sau POST /api/crawl/start thành công, CrawlerStudioView gọi onViewQueue để chuyển sang Hàng đợi tác vụ và shell tải lại danh sách task. Request lỗi giữ nguyên form và hiển thị lý do; không tự retry. Nút Xem danh sách bài vẫn mở thư viện theo thương hiệu.
+
+Hàng đợi hiển thị thống kê Clef gọn ở cột tiến độ; lý do/mã lỗi đầy đủ chỉ nằm trong details Xem chi tiết tại cột Trạng thái, không lặp dưới Mục tiêu và Tiến độ. Tác vụ Clef chưa xong có nhãn ngắn và số bài chờ.
+
+## Gateway gián đoạn — 29/10/2026
+
+Client chỉ thử lại tối đa một lần (nghỉ2giây) với POST bridge/evaluate thuần suy luận khi nhận HTTP502/504/520/522/524 chưa có mã lỗi xác định. Tổng2lần gọi, giữ chung gate; không retry409 busy/429 rate limit/auth/lỗi output Clef đã xác định, không tự retry rewrite/DB mutation hoặc Facebook. Hết lần thử vẫn lỗi thì giữ pending, task paused và không báo100%.
+
+Gateway mới trả mã lỗi phân biệt CLEF_INVALID_OUTPUT, AI_UPSTREAM_FAILED, AI_TIMEOUT và log code/type/trace, không log payload/cookie/key. Client hiển thị mã/lý do an toàn thay vì che mọi lỗi bằng một câu chung. Cần pull và build/recreate app trên cả máy client lẫn máy chủ AI; máy AI phải giữ RemoteAi:BaseUrl trống để không gọi vòng. Giữ .env và volume khóa/media trên mỗi máy; file env thiếu dấu chấm được ignore, Compose vẫn cần .env.
+
+Đánh giá lại hết các bài của tác vụ dừng vì Clef: nếu đã đủ mục tiêu thì completed; nếu mới thu thập4/10 thì vẫn paused/COLLECTION_INCOMPLETE, báo còn thiếu bài thu thập thay vì ghi Clef còn0bài chờ. Không tự resume Facebook.

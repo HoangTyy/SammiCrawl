@@ -1,5 +1,5 @@
 let csrfRequest: Promise<string> | undefined;
-function csrfToken(): Promise<string> {
+export function csrfToken(): Promise<string> {
   return csrfRequest ??= fetch('/api/auth/csrf', { cache: 'no-store', credentials: 'same-origin' })
     .then(async response => {
       if (!response.ok) throw new Error('Không lấy được phiên xác nhận. Tải lại trang rồi thử lại.');

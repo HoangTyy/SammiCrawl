@@ -5,7 +5,7 @@ using System.Text.Json.Nodes;
 namespace SammiCrawl.Backend.Controllers;
 public sealed record BridgeEvaluationRequest(string Text, JsonObject Profile, List<string>? Images = null);
 [ApiController, Authorize, EnableRateLimiting("remote-ai")]
-public sealed class AiBridgeController(AiRunner ai) : ControllerBase
+public sealed class AiBridgeController(AiRunner ai, ILogger<AiBridgeController> logger) : ControllerBase
 {
     bool Trusted => User.Identity?.AuthenticationType == "RemoteAiKey";
     [HttpGet("/bridge/health")]
@@ -42,7 +42,12 @@ public sealed class AiBridgeController(AiRunner ai) : ControllerBase
         }
         if (!ai.TryAcquire()) { Response.Headers.RetryAfter="10"; return Conflict(new { error="AI đang bận; chỉ chạy một model mỗi lần." }); }
         try { return Ok(await ai.Evaluate(request.Text,request.Profile,request.Images??[])); }
-        catch { return StatusCode(502,new { error="Clef chưa hoàn tất đánh giá. Kiểm tra model trên máy AI." }); }
+        catch (Exception ex)
+        {
+            var failure = AiGatewayException.FromException(ex);
+            logger.LogWarning("Clef gateway failed: {Code}; exception {ExceptionType}; trace {TraceId}", failure.Code, ex.GetType().Name, HttpContext.TraceIdentifier);
+            return StatusCode(failure.Status,new { error=failure.Message, code=failure.Code });
+        }
         finally { ai.Release(); }
     }
 }

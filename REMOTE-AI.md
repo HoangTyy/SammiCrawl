@@ -42,3 +42,11 @@ Chạy `docker compose --profile ai-host up -d ai-tunnel`. Connector tự restar
 Rewrite cũng nhận trường images: danh sách base64 JPEG/PNG/WebP, tối đa 4 ảnh, mỗi ảnh 5 MB. Bonsai đọc ảnh cùng caption trong một request, vẫn chỉ một model. Bản nháp có rewriteImagesProvided để biết ảnh đã được gửi; không coi đó là xác minh OCR hay tính phù hợp tự động. Video chưa có phân tích khung hình.
 
 Bước đối chiếu ảnh: backend client gọi /bridge/rewrite với mode=read-image và images để phiên âm; UI cho người thao tác sửa/xác nhận. Lần rewrite tiếp theo nhận caption cùng ghi chú đã xác nhận, không nhận lại ảnh. Cả hai lần dùng Bonsai và chạy tuần tự qua gate. Đọc ảnh không tạo bản nháp.
+
+## Gateway gián đoạn — 29/10/2026
+
+Client chỉ thử lại tối đa một lần (nghỉ2giây) với POST bridge/evaluate thuần suy luận khi nhận HTTP502/504/520/522/524 chưa có mã lỗi xác định. Tổng2lần gọi, giữ chung gate; không retry409 busy/429 rate limit/auth/lỗi output Clef đã xác định, không tự retry rewrite/DB mutation hoặc Facebook. Hết lần thử vẫn lỗi thì giữ pending, task paused và không báo100%.
+
+Gateway mới trả mã lỗi phân biệt CLEF_INVALID_OUTPUT, AI_UPSTREAM_FAILED, AI_TIMEOUT và log code/type/trace, không log payload/cookie/key. Client hiển thị mã/lý do an toàn thay vì che mọi lỗi bằng một câu chung. Cần pull và build/recreate app trên cả máy client lẫn máy chủ AI; máy AI phải giữ RemoteAi:BaseUrl trống để không gọi vòng. Giữ .env và volume khóa/media trên mỗi máy; file env thiếu dấu chấm được ignore, Compose vẫn cần .env.
+
+Đánh giá lại hết các bài của tác vụ dừng vì Clef: nếu đã đủ mục tiêu thì completed; nếu mới thu thập4/10 thì vẫn paused/COLLECTION_INCOMPLETE, báo còn thiếu bài thu thập thay vì ghi Clef còn0bài chờ. Không tự resume Facebook.

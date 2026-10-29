@@ -30,10 +30,17 @@ public sealed class WorkflowsService(IProjectRepository db, AiRunner ai, Faceboo
         if (accounts.Count == 0) return ServiceResult.BadRequest(new { error = "Không có tài khoản cào đủ điều kiện. Kiểm tra tài khoản đang bật và không bị khóa, hết phiên hoặc giới hạn." });
         var missing = accounts.Count(a => string.IsNullOrEmpty(a.ProtectedSecret));
         if (missing > 0) return ServiceResult.BadRequest(new { error = $"Có {missing} tài khoản cào đang bật nhưng chưa có phiên đăng nhập. Cập nhật phiên hoặc tạm ngưng tài khoản đó." });
+        if (CrawlCapacity.Validate(config["maxPosts"]!.GetValue<int>(), accounts.Count, config["accountPostLimit"]!.GetValue<int>()) is string capacityError)
+            return ServiceResult.BadRequest(new { error = capacityError, code = "CRAWL_CAPACITY_EXCEEDED" });
         config["crawlAccountIds"] = new JsonArray(accounts.Select(a => JsonValue.Create(a.Id.ToString())).ToArray()); config["extractMedia"] = true; config["targetType"] = url.AbsolutePath.StartsWith("/groups/") ? "group" : "page";
         if(worker.IsBusy)return ServiceResult.Conflict(new{error="Đang có lượt cào chạy. Chờ hoàn tất hoặc dừng lượt hiện tại."});
         if(config["includeComments"]?.GetValue<bool>()==true)return ServiceResult.BadRequest(new{error="Worker hiện thu thập bài và media, chưa hỗ trợ bình luận. Bỏ chọn Thu thập bình luận trước khi chạy."});
         if(config["minLikes"]!.GetValue<int>()>0||config["minComments"]!.GetValue<int>()>0)return ServiceResult.BadRequest(new{error="Bộ lọc tương tác chưa hỗ trợ trên worker hiện tại; đặt tối thiểu về 0."});
+        var aiStatus = JsonSerializer.SerializeToNode(await ai.Status());
+        if (CrawlEvaluationState.ReadinessError(aiStatus) is string aiError)
+            return ServiceResult.Json(new { error = aiError, code = "CLEF_UNAVAILABLE" }, statusCode: 503);
+        if (aiStatus?["busy"]?.GetValue<bool>() == true)
+            return ServiceResult.Conflict(new { error = "AI đang bận. Chờ tác vụ AI hiện tại xong trước khi cào và đánh giá." });
         var id=Guid.NewGuid();config["id"]=id.ToString();config["targetName"]=JsonNode.Parse(brand.Json)?["name"]?.ToString()??brandId.ToString();config["createdAt"]=DateTimeOffset.UtcNow.ToString("O");config["status"]="pending";config["progress"]=0;config["crawledPosts"]=0;config["workerNode"]="Facebook local";config["ipAddress"]="—";config["latencyMs"]=0;
         var task=new Document{Id=id,Kind="tasks",Json=config.ToJsonString()};db.AddDocument(task);await db.SaveChangesAsync();
         if(!worker.Enqueue(id)){config["status"]="paused";task.Json=config.ToJsonString();await db.SaveChangesAsync();return ServiceResult.Conflict(new{error="Worker vừa nhận tác vụ khác. Tác vụ mới chưa chạy."});}

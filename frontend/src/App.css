@@ -2110,3 +2110,31 @@
   .help-tooltip [role=tooltip] { position:fixed; top:auto; bottom:16px; left:16px; right:16px; width:auto; max-width:none; box-sizing:border-box; z-index:150; }
   .queue-view .cyber-table thead, .article-library .article-table thead, .channel-table thead, .accounts-table thead { display:block; contain:strict; margin:-1px; }
 }
+.article-pagination { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:14px; margin-top:16px; color:var(--text-secondary); font-size:13px; }
+.article-page-size, .article-page-controls { display:flex; align-items:center; gap:8px; }
+.article-page-size select { width:auto; min-width:70px; }
+.article-page-controls > span { white-space:nowrap; }
+@media (max-width:600px) {
+  .article-pagination { align-items:flex-start; }
+  .article-page-controls { width:100%; flex-wrap:wrap; }
+  .article-page-controls .btn-preset { flex:1; min-height:40px; justify-content:center; }
+}
+
+.clef-row-progress { display:flex; flex-direction:column; gap:6px; margin-bottom:10px; min-width:0; }
+.clef-row-progress progress { width:100%; accent-color:var(--cyan-400); }
+
+.article-dialog { max-height:calc(100dvh - 48px); overflow:hidden; min-height:0; }
+.article-dialog > header { flex-shrink:0; }
+.article-dialog .article-preview { flex:1 1 auto; min-height:0; overscroll-behavior:contain; }
+.article-dialog-progress { flex:0 0 auto; min-height:0; max-height:35dvh; overflow:auto; padding:0 24px; overscroll-behavior:contain; }
+.article-dialog-progress .rewrite-progress { margin:12px 0; }
+@media(max-width:600px) {
+  .article-dialog { max-height:calc(100dvh - 24px); }
+  .article-dialog-progress { padding:0 16px; }
+  .article-dialog-progress .rewrite-progress-heading { flex-wrap:wrap; }
+}
+
+.task-status-summary { display:block; margin-top:8px; color:var(--text-secondary); font-size:12px; }
+.task-status-details { margin-top:8px; max-width:300px; font-size:12px; color:var(--text-secondary); overflow-wrap:anywhere; }
+.task-status-details summary { cursor:pointer; color:var(--cyan-400); }
+.task-status-details p { margin:8px 0 0; line-height:1.5; white-space:normal; }

@@ -10,5 +10,11 @@
     <Compile Include="../../backend/Contracts/ServiceResult.cs" Link="Contracts/ServiceResult.cs" />
     <Compile Include="../../backend/Contracts/Credentials.cs" Link="Contracts/Credentials.cs" />
     <Compile Include="../../backend/Infrastructure/FacebookMediaDownload.cs" Link="Infrastructure/FacebookMediaDownload.cs" />
+    <Compile Include="../../backend/Services/LiveUpdates.cs" Link="Services/LiveUpdates.cs" />
+    <Compile Include="../../backend/Services/CrawlCapacity.cs" Link="Services/CrawlCapacity.cs" />
+    <Compile Include="../../backend/Services/CrawlEvaluationState.cs" Link="Services/CrawlEvaluationState.cs" />
+    <Compile Include="../../backend/Services/AiModelUnavailableException.cs" Link="Services/AiModelUnavailableException.cs" />
+    <Compile Include="../../backend/Services/AiGatewayException.cs" Link="Services/AiGatewayException.cs" />
+    <Compile Include="../../backend/Services/AiGatewayClient.cs" Link="Services/AiGatewayClient.cs" />
   </ItemGroup>
 </Project>

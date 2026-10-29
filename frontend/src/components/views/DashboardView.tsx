@@ -1,5 +1,5 @@
 import { ContentReport } from '../ContentReport';
-import React, { useState } from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 import { 
   ArrowUpRight, 
   Send, 
@@ -28,6 +28,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [quickUrl, setQuickUrl] = useState('');
 
   const [copied, setCopied] = useState(false);
+  const terminalRef = useRef<HTMLDivElement>(null);
+  const followLatest = useRef(true);
+  const visibleLogs = logs.slice(-100);
+
+  useLayoutEffect(() => {
+    const terminal = terminalRef.current;
+    if (terminal && followLatest.current) terminal.scrollTop = terminal.scrollHeight;
+  }, [logs]);
 
   const handleQuickSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,14 +45,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   };
 
   const handleCopyLogs = () => {
-    navigator.clipboard.writeText(logs.join('\n'));
+    navigator.clipboard.writeText(visibleLogs.join('\n'));
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   return (
     <div className="view-container dashboard-view">
-      <ContentReport />
+      <ContentReport>
 
       {/* Main Grid: Launcher + Cluster Nodes + Terminal */}
       <div className="dashboard-grid-layout">
@@ -144,8 +152,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </button>
             </div>
 
-            <div className="terminal-body-screen">
-              {logs.map((log, i) => (
+            <div className="terminal-body-screen" ref={terminalRef} onScroll={event => {
+              const terminal = event.currentTarget;
+              followLatest.current = terminal.scrollHeight - terminal.clientHeight - terminal.scrollTop <= 24;
+            }}>
+              {visibleLogs.map((log, i) => (
                 <div key={i} className="terminal-log-row">
                   <span className="log-marker">&gt;&gt;</span>
                   <span className="log-text">{log}</span>
@@ -165,6 +176,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
       </div>
+      </ContentReport>
     </div>
   );
 };

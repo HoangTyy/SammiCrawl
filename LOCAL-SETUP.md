@@ -115,3 +115,31 @@ Login/setup giới hạn10request/phút theo IPpeer thực, không tin X-Forward
 `/media/*` cần sessioncookie đã đăng nhập, anonymous401, khôngcache; publicprovider chặn media canonical khỏi kho staticpublic. AssetsJS/CSS/login vẫnpublic. Missingmedia404, rangevideo vẫn được hỗ trợ. Tảimedia dùngHTTPS443 allowlist, khôngredirect, scopedcookie, streamtốiđa50MB, timeout30s, filepartial không được côngbố thành mediahoàntất.
 
 Test độc lập: xem `tests/SecurityChecks/README.md`. Báo cáo và giớihạn: `docs/research/SECURITY-HARDENING.md`. Không đổi credential hoặc resetdemo khi chạy các kiểmtra này.
+
+## Đồng bộ trực tiếp (28/10/2026)
+
+Khi nhiều người mở cùng backend, SignalR `/api/live` thông báo sau khi ứng dụng lưu thay đổi thành công, các danh sách/báo cáo tự tải lại. Thanh trạng thái hiển thị kết nối đồng bộ; mất kết nối tự thử lại và tải lại dữ liệu khi nối lại. Biểu mẫu đang mở giữ nội dung nhập và báo cần đối chiếu khi danh sách được cập nhật. Kết nối dùng phiên cookie hiện có và CSRF cho POST; không mở CORS hoặc truy cập hub bằng khóa bridge/worker.
+
+Không có polling DB: SQL trực tiếp hoặc ghi từ backend khác không tự đẩy thông báo. Có thể bấm Làm mới hoặc quay lại cửa sổ để tải dữ liệu. Cấu hình hiện hỗ trợ một backend; nhiều replica cần backplane. Đồng bộ hiển thị không bảo đảm chống ghi đè khi cùng sửa: conditional update brand/kênh được giữ, các loại khác chưa có bảo vệ tương đương.
+
+Vite dev proxy `/api` có WebSocket (`ws: true`), giữ Host (`changeOrigin: false`) để kiểm tra Origin cùng nguồn. Khi triển khai qua reverse proxy phải hỗ trợ WebSocket và cấu hình Host/TLS đúng môi trường.
+
+Giới hạn tác vụ cào: mỗi tài khoản chỉ được dùng một lượt; tổng maxPosts phải <= min(1000, số tài khoản cào đủ điều kiện × accountPostLimit). Form hiển thị sức chứa và chặn chạy nếu vượt; API kiểm tra lại danh sách tài khoản thực trước khi tạo task, trả 400 CRAWL_CAPACITY_EXCEEDED. Không tự hạ thông số hoặc quay vòng tài khoản. Mẫu cấu hình có thể lưu để tái sử dụng, nhưng luôn kiểm tra lại sức chứa khi chạy; trần này không bảo đảm lấy đủ bài nếu nguồn ít, trùng bài hoặc lỗi phiên.
+
+## Cào và đánh giá Clef — 28/10/2026
+
+Worker đánh giá Clef tuần tự ngay sau mỗi bài mới được lưu, trước khi xử lý bài tiếp theo. StartCrawl kiểm tra AI online/có clef-flash:latest/không busy trước khi tạo task (không suy luận và không chứng minh endpoint systemone hoạt động). Giữ singleton gate, không chạy song song model. Nếu đánh giá lỗi/busy/kết quả không hợp lệ, dừng lượt ở paused/CLEF_EVALUATION_INCOMPLETE, giữ bài pending để đánh giá thủ công, không tự retry Facebook hoặc đổi model.
+
+Task chỉ completed/100% khi đủ số bài thu thập và tất cả có kết quả Clef hợp lệ; running tối đa99%, đủ bài chưa đánh giá là90%. maxPosts và accountPostLimit vẫn tính bài mới thu thập, kể cả bài sau đó bị loại; không tự cào bù số bài không phù hợp. Task lưu clefEvaluatedPosts/clefRecommendedPosts/clefReviewPosts/clefRejectedPosts. Queue hiển thị thống kê và lý do dừng.
+
+ContentService đánh giá rejected thì soft-delete bài với deletedReason=clef_rejected: không còn trong danh sách/báo cáo, không tạo draft; vẫn giữ record/media/kết quả để chống trùng và đối chiếu, không xóa file vật lý. recommended giữ điểm/lý do/chủ đề; review (nhất là media chưa phân tích được) giữ riêng để người duyệt, không tự xem là phù hợp. Draft cũ giữ snapshot, không xóa theo bài nguồn. Không tự áp dụng lại đánh giá cho bài lịch sử.
+
+Khi khởi động, các task Facebook local cũ completed nhưng còn bài gắn crawlTaskId chưa đánh giá được chuyển paused/CLEF_EVALUATION_INCOMPLETE; không replay. Không suy ra task thiếu mọi bài nguồn (đã bị xóa) là lỗi. Khi đánh giá lại thủ công, thống kê task cập nhật; chỉ tự hoàn tất task tạm dừng vì Clef khi đủ bài và đủ kết quả, không tiếp tục cào. Các tác vụ tạm dừng do người dùng không tự resume.
+
+## Gateway gián đoạn — 29/10/2026
+
+Client chỉ thử lại tối đa một lần (nghỉ2giây) với POST bridge/evaluate thuần suy luận khi nhận HTTP502/504/520/522/524 chưa có mã lỗi xác định. Tổng2lần gọi, giữ chung gate; không retry409 busy/429 rate limit/auth/lỗi output Clef đã xác định, không tự retry rewrite/DB mutation hoặc Facebook. Hết lần thử vẫn lỗi thì giữ pending, task paused và không báo100%.
+
+Gateway mới trả mã lỗi phân biệt CLEF_INVALID_OUTPUT, AI_UPSTREAM_FAILED, AI_TIMEOUT và log code/type/trace, không log payload/cookie/key. Client hiển thị mã/lý do an toàn thay vì che mọi lỗi bằng một câu chung. Cần pull và build/recreate app trên cả máy client lẫn máy chủ AI; máy AI phải giữ RemoteAi:BaseUrl trống để không gọi vòng. Giữ .env và volume khóa/media trên mỗi máy; file env thiếu dấu chấm được ignore, Compose vẫn cần .env.
+
+Đánh giá lại hết các bài của tác vụ dừng vì Clef: nếu đã đủ mục tiêu thì completed; nếu mới thu thập4/10 thì vẫn paused/COLLECTION_INCOMPLETE, báo còn thiếu bài thu thập thay vì ghi Clef còn0bài chờ. Không tự resume Facebook.
