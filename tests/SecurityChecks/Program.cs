@@ -118,6 +118,15 @@ try
     var oldTask = new System.Text.Json.Nodes.JsonObject { ["status"]="completed", ["crawledPosts"]=2, ["maxPosts"]=2 };
     Check(CrawlEvaluationState.RepairIncompleteCompletion(oldTask,[Assessed("recommended"),new() { ["aiStatus"]="pending" }]) && oldTask["status"]?.ToString()=="paused" && oldTask["progress"]!.GetValue<int>()<100, "legacy false completion repaired without replaying crawl");
     Check(!CrawlEvaluationState.RepairIncompleteCompletion(new() { ["status"]="completed" },[]) && !CrawlEvaluationState.RepairIncompleteCompletion(new() { ["status"]="completed" },[Assessed("recommended")]), "legacy completed tasks with no remaining articles or complete evaluations preserved");
+    var crawlA=Guid.NewGuid(); var crawlB=Guid.NewGuid(); var invalidAccount=Guid.NewGuid();
+    var eligibleAccounts=new HashSet<Guid>{crawlA,crawlB};
+    System.Text.Json.Nodes.JsonArray Selection(params Guid[] ids)=>new(ids.Select(id=>System.Text.Json.Nodes.JsonValue.Create(id.ToString())).ToArray());
+    Check(CrawlAccountSelection.Validate(Selection(crawlB),eligibleAccounts,out var onlyB) is null && onlyB.SequenceEqual(new[]{crawlB}), "only explicitly selected account used; unselected eligible account excluded");
+    Check(CrawlAccountSelection.Validate(null,eligibleAccounts,out _) is not null && CrawlAccountSelection.Validate(new System.Text.Json.Nodes.JsonArray(),eligibleAccounts,out _) is not null,"missing or empty selection never defaults to all accounts");
+    Check(CrawlAccountSelection.Validate(Selection(invalidAccount),eligibleAccounts,out _) is not null,"deleted disabled publish or nonactive account outside eligible set rejected");
+    Check(CrawlAccountSelection.Validate(new System.Text.Json.Nodes.JsonArray("bad-id"),eligibleAccounts,out _) is not null,"malformed selected account rejected");
+    Check(CrawlAccountSelection.Validate(Selection(crawlB,crawlA,crawlB),eligibleAccounts,out var distinctSelection) is null && distinctSelection.SequenceEqual(new[]{crawlB,crawlA}),"selection order retained and duplicate accounts cannot inflate capacity");
+    Check(CrawlCapacity.Validate(20,onlyB.Length,10) is not null,"unselected accounts cannot increase selected crawl capacity");
     Check(CrawlCapacity.Validate(100, 1, 10) is not null, "crawl rejects100 posts with one account limited to10");
     Check(CrawlCapacity.Validate(10, 1, 10) is null, "crawl accepts exact single-account capacity");
     Check(CrawlCapacity.Validate(20, 2, 10) is null && CrawlCapacity.Validate(21, 2, 10) is not null, "crawl capacity sums across accounts with exact boundary");

@@ -45,8 +45,12 @@ public sealed class WorkflowsService(IProjectRepository db, AiRunner ai, Faceboo
         if (config["delayMinMs"]!.GetValue<double>() > config["delayMaxMs"]!.GetValue<double>() || config["accountRestMinMs"]!.GetValue<double>() > config["accountRestMaxMs"]!.GetValue<double>()) return ServiceResult.BadRequest(new { error = "Khoảng nghỉ min không được lớn hơn max." });
         var accounts = (await db.ListDocumentsAsync("accounts")).Where(d => { var a = JsonNode.Parse(d.Json); return a?["deletedAt"] is null && a?["role"]?.ToString() == "crawl" && a?["enabled"]?.GetValue<bool>() != false && a?["facebookStatus"]?.ToString() == "active"; }).ToList();
         if (accounts.Count == 0) return ServiceResult.BadRequest(new { error = "Không có tài khoản cào đủ điều kiện. Kiểm tra tài khoản đang bật và không bị khóa, hết phiên hoặc giới hạn." });
+        if (CrawlAccountSelection.Validate(config["crawlAccountIds"], accounts.Select(a => a.Id).ToHashSet(), out var selectedIds) is string selectionError)
+            return ServiceResult.BadRequest(new { error = selectionError, code = "CRAWL_ACCOUNT_SELECTION_INVALID" });
+        var byId = accounts.ToDictionary(a => a.Id);
+        accounts = selectedIds.Select(id => byId[id]).ToList();
         var missing = accounts.Count(a => string.IsNullOrEmpty(a.ProtectedSecret));
-        if (missing > 0) return ServiceResult.BadRequest(new { error = $"Có {missing} tài khoản cào đang bật nhưng chưa có phiên đăng nhập. Cập nhật phiên hoặc tạm ngưng tài khoản đó." });
+        if (missing > 0) return ServiceResult.BadRequest(new { error = $"Có {missing} tài khoản cào đã chọn nhưng chưa có phiên đăng nhập. Cập nhật phiên hoặc tạm ngưng tài khoản đó." });
         if (CrawlCapacity.Validate(config["maxPosts"]!.GetValue<int>(), accounts.Count, config["accountPostLimit"]!.GetValue<int>()) is string capacityError)
             return ServiceResult.BadRequest(new { error = capacityError, code = "CRAWL_CAPACITY_EXCEEDED" });
         if (mode == "group-search" && config["maxPosts"]!.GetValue<int>() > (long)config["maxGroups"]!.GetValue<int>() * config["groupPostLimit"]!.GetValue<int>())

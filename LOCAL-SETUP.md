@@ -124,7 +124,7 @@ Không có polling DB: SQL trực tiếp hoặc ghi từ backend khác không t�
 
 Vite dev proxy `/api` có WebSocket (`ws: true`), giữ Host (`changeOrigin: false`) để kiểm tra Origin cùng nguồn. Khi triển khai qua reverse proxy phải hỗ trợ WebSocket và cấu hình Host/TLS đúng môi trường.
 
-Giới hạn tác vụ cào: mỗi tài khoản chỉ được dùng một lượt; tổng maxPosts phải <= min(1000, số tài khoản cào đủ điều kiện × accountPostLimit). Form hiển thị sức chứa và chặn chạy nếu vượt; API kiểm tra lại danh sách tài khoản thực trước khi tạo task, trả 400 CRAWL_CAPACITY_EXCEEDED. Không tự hạ thông số hoặc quay vòng tài khoản. Mẫu cấu hình có thể lưu để tái sử dụng, nhưng luôn kiểm tra lại sức chứa khi chạy; trần này không bảo đảm lấy đủ bài nếu nguồn ít, trùng bài hoặc lỗi phiên.
+Giới hạn tác vụ cào: mỗi tài khoản chỉ được dùng một lượt; tổng maxPosts phải <= min(1000, số tài khoản cào đủ điều kiện đã chọn × accountPostLimit). Form hiển thị sức chứa và chặn chạy nếu vượt; API kiểm tra lại danh sách tài khoản thực trước khi tạo task, trả 400 CRAWL_CAPACITY_EXCEEDED. Không tự hạ thông số hoặc quay vòng tài khoản. Mẫu cấu hình có thể lưu để tái sử dụng, nhưng luôn kiểm tra lại sức chứa khi chạy; trần này không bảo đảm lấy đủ bài nếu nguồn ít, trùng bài hoặc lỗi phiên.
 
 ## Cào và đánh giá Clef — 28/10/2026
 
@@ -167,3 +167,5 @@ FacebookCrawlWorker đọc bộ đếm hiển thị trong phạm vi bài bằng 
 Giờ nguồn lưu sourcePublishedAt UTC chỉ từ data-utime hoặc ISO datetime có múi giờ hợp lệ; thiếu thì giữ sourcePublishedText, không đoán giờ tuyệt đối từ nhãn tương đối. createdAt vẫn là thời gian lưu/thu thập. UI phân biệt Thu thập / Đăng gốc, raw nhãn hiển thị Facebook lúc cào; số K/M/nghìn/triệu có dấu≈. Bài đã lưu trước thay đổi không tự backfill và bài trùng không bị sửa metadata; áp dụng cho bài mới thu thập.
 
 Kiểm tra độc lập tests/FacebookMetadataChecks dùng Chromium thật với HTML fixture và code mapper production, chặn toàn bộ mạng; không đọc DB/phiên Facebook/Ollama. Chưa chạy thử Facebook thật trong lượt bổ sung; fixture pass không bảo đảm mọi layout Facebook đều đọc được.
+
+Chọn tài khoản cào: tại Cào bài Facebook, đánh dấu tài khoản muốn dùng trước khi chạy. Có Chọn tất cả/Bỏ chọn; giữ lựa chọn trên trình duyệt và trong mẫu. Không chọn tài khoản thì không thể chạy. Nếu mẫu cũ có ID tài khoản đã xóa/ngưng/hết phiên, bỏ lựa chọn không hợp lệ rồi chọn lại. API /api/crawl/start yêu cầu crawlAccountIds là danh sách UUID không rỗng, chỉ nhận tài khoản cào đang bật/active có phiên; không tự dùng toàn bộ tài khoản khi thiếu trường. Tổng bài bị giới hạn theo số tài khoản thực được chọn. Chưa có khóa tài khoản phân tán giữa nhiều máy.

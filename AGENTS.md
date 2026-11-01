@@ -6,7 +6,7 @@ Cập nhật: 25/10/2026. Đọc file này trước khi sửa mã; sau đó đ�
 
 Web tiếng Việt hỗ trợ quản lý nội dung Facebook theo thương hiệu. Luồng mong muốn:
 
-1. Chọn thương hiệu, Page nguồn và thông số thu thập; dùng tất cả tài khoản cào đang bật/đủ điều kiện.
+1. Chọn thương hiệu, Page nguồn và thông số thu thập; chọn tài khoản cào đang bật/đủ điều kiện cho lượt chạy.
 2. Thu thập bài và ảnh/video gốc; Clef vision/decision lọc bài ở nền.
 3. Trong Bài viết & duyệt đăng, lọc theo thương hiệu/trạng thái Clef rồi chọn kênh đích.
 4. Repost = sao chép nội dung và media gốc để đăng lại, không phải share link. Rewrite = Bonsai viết lại nội dung, giữ media gốc.
@@ -159,7 +159,7 @@ Không tự xóa chức năng xem cookie mà người dùng yêu cầu; không t
 - Phạm vi một process backend, shared project như quyền API hiện có. SQL trực tiếp và thay đổi từ replica khác không tự phát sự kiện; cần tải lại thủ công/focus. Nhiều replica cần backplane và cơ chế báo thay đổi sau commit dùng chung; chưa triển khai trong bản này.
 - Kiểm tra SignalR nằm cùng `tests/SecurityChecks/`: fixture không DB/FB/Ollama, kiểm tra CSRF/auth/port gateway và hai WebSocket client cùng nhận invalidation.
 
-Giới hạn tác vụ cào: mỗi tài khoản chỉ được dùng một lượt; tổng maxPosts phải <= min(1000, số tài khoản cào đủ điều kiện × accountPostLimit). Form hiển thị sức chứa và chặn chạy nếu vượt; API kiểm tra lại danh sách tài khoản thực trước khi tạo task, trả 400 CRAWL_CAPACITY_EXCEEDED. Không tự hạ thông số hoặc quay vòng tài khoản. Mẫu cấu hình có thể lưu để tái sử dụng, nhưng luôn kiểm tra lại sức chứa khi chạy; trần này không bảo đảm lấy đủ bài nếu nguồn ít, trùng bài hoặc lỗi phiên.
+Giới hạn tác vụ cào: mỗi tài khoản chỉ được dùng một lượt; tổng maxPosts phải <= min(1000, số tài khoản cào đủ điều kiện đã chọn × accountPostLimit). Form hiển thị sức chứa và chặn chạy nếu vượt; API kiểm tra lại danh sách tài khoản thực trước khi tạo task, trả 400 CRAWL_CAPACITY_EXCEEDED. Không tự hạ thông số hoặc quay vòng tài khoản. Mẫu cấu hình có thể lưu để tái sử dụng, nhưng luôn kiểm tra lại sức chứa khi chạy; trần này không bảo đảm lấy đủ bài nếu nguồn ít, trùng bài hoặc lỗi phiên.
 
 ## Cào và đánh giá Clef — 28/10/2026
 
@@ -210,3 +210,7 @@ FacebookCrawlWorker đọc bộ đếm hiển thị trong phạm vi bài bằng 
 Giờ nguồn lưu sourcePublishedAt UTC chỉ từ data-utime hoặc ISO datetime có múi giờ hợp lệ; thiếu thì giữ sourcePublishedText, không đoán giờ tuyệt đối từ nhãn tương đối. createdAt vẫn là thời gian lưu/thu thập. UI phân biệt Thu thập / Đăng gốc, raw nhãn hiển thị Facebook lúc cào; số K/M/nghìn/triệu có dấu≈. Bài đã lưu trước thay đổi không tự backfill và bài trùng không bị sửa metadata; áp dụng cho bài mới thu thập.
 
 Kiểm tra độc lập tests/FacebookMetadataChecks dùng Chromium thật với HTML fixture và code mapper production, chặn toàn bộ mạng; không đọc DB/phiên Facebook/Ollama. Chưa chạy thử Facebook thật trong lượt bổ sung; fixture pass không bảo đảm mọi layout Facebook đều đọc được.
+
+## Chọn tài khoản cào — 01/11/2026
+
+CrawlerStudioView cho chọn rõ crawlAccountIds, không tự chọn tất cả. Chỉ tài khoản role=crawl, enabled và facebookStatus=active được chọn để chạy; lựa chọn hết điều kiện phải bỏ/chọn lại. localStorage/mẫu lưu danh sách ID; mẫu cũ thiếu danh sách không tự fallback tất cả. Capacity tính theo tài khoản đủ điều kiện đã chọn. StartCrawl kiểm tra lại ID/điều kiện và phiên chỉ trên lựa chọn đó; không âm thầm thay tài khoản khác. CrawlAccountSelection.Validate dùng chung logic parse/dedup/kiểm tra eligible và có fixture kiểm tra. Tính năng này chưa bổ sung ownership/lease hoặc khóa account giữa nhiều backend; không coi lựa chọn account là giải pháp đồng thời nhiều máy.

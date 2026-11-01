@@ -2151,3 +2151,16 @@
  .source-groups .article-table td { display:block; width:100%; min-width:0; box-sizing:border-box; border:0; padding:0; overflow-wrap:anywhere; }
  .source-groups td::before { content:attr(data-label); display:block; color:var(--text-muted); font-size:11px; margin-bottom:5px; }
 }
+
+.crawl-account-picker { min-width:0; margin:0; padding:16px; border:1px solid var(--border-subtle); border-radius:12px; background:var(--bg-surface); }
+.crawl-account-picker legend { padding:0 6px; font-size:14px; font-weight:600; }
+.crawl-account-toolbar { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px; font-size:12px; color:var(--text-muted); }
+.crawl-account-toolbar > div { display:flex; gap:8px; }
+.crawl-account-options { display:grid; gap:8px; max-height:280px; overflow:auto; margin-bottom:12px; }
+.crawl-account-option { display:flex; align-items:center; gap:12px; padding:12px; border:1px solid var(--border-subtle); border-radius:9px; cursor:pointer; }
+.crawl-account-option.is-selected { border-color:var(--cyan-400); background:rgba(6,182,212,.06); }
+.crawl-account-option input { flex-shrink:0; width:17px; height:17px; accent-color:var(--cyan-400); }
+.crawl-account-option span { min-width:0; overflow-wrap:anywhere; }
+.crawl-account-option strong { display:block; font-size:13px; }
+.crawl-account-option small { display:block; margin-top:4px; font-size:12px; color:var(--text-muted); }
+.crawl-account-option:has(input:disabled) { opacity:.65; cursor:default; }
