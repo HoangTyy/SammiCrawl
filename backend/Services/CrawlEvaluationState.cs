@@ -44,9 +44,10 @@ public sealed class CrawlEvaluationState
         task["clefRejectedPosts"] = Rejected;
     }
 
-    public static int Progress(string status, int captured, int target, int evaluated)
+    public static int Progress(string status, int captured, int target, int evaluated, bool autoEvaluate = true)
     {
         if (target <= 0) return 0;
+        if (!autoEvaluate) return status == "completed" && captured >= target ? 100 : Math.Clamp((int)(100L * captured / target), 0, 99);
         if (status == "completed" && captured >= target && evaluated >= captured) return 100;
         return Math.Clamp((int)((90L * captured + 10L * Math.Min(captured, evaluated)) / target), 0, 99);
     }
@@ -60,7 +61,7 @@ public sealed class CrawlEvaluationState
 
     public static bool RepairIncompleteCompletion(JsonObject task, IReadOnlyList<JsonObject> articles)
     {
-        if (task["status"]?.ToString() != "completed" || articles.Count == 0) return false;
+        if (task["autoEvaluate"]?.GetValue<bool>() == false || task["status"]?.ToString() != "completed" || articles.Count == 0) return false;
         var evaluation = new CrawlEvaluationState();
         foreach (var article in articles) evaluation.Record(ServiceResult.Ok(article));
         if (evaluation.Evaluated == articles.Count) return false;

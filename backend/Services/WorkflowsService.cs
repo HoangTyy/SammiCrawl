@@ -35,7 +35,6 @@ public sealed class WorkflowsService(IProjectRepository db, AiRunner ai, Faceboo
             if (keywords.Length == 0 || keywords.Any(k => k.Length > 200)) return ServiceResult.BadRequest(new { error = "Nhập tối đa 6 từ khóa tìm nhóm, mỗi từ khóa tối đa 200 ký tự." });
             foreach (var key in new[] { "maxGroups", "groupPostLimit" })
                 if (config[key] is not JsonValue v || !v.TryGetValue<int>(out var n) || n < 1 || n > (key == "maxGroups" ? 20 : 1000)) return ServiceResult.BadRequest(new { error = $"Thông số {key} không hợp lệ." });
-            if (!BrandPolicy.Channels(brandProfile).Any(c => c is not null && BrandPolicy.Flag(c, "active"))) return ServiceResult.BadRequest(new { error = "Thêm ít nhất một kênh đang bật để Clef đối chiếu bài với kênh." });
             config["groupKeywords"] = string.Join("\n", keywords);
             config["url"] = "https://www.facebook.com/search/groups/?q=" + Uri.EscapeDataString(keywords[0]);
         }
@@ -59,11 +58,7 @@ public sealed class WorkflowsService(IProjectRepository db, AiRunner ai, Faceboo
         if(worker.IsBusy)return ServiceResult.Conflict(new{error="Đang có lượt cào chạy. Chờ hoàn tất hoặc dừng lượt hiện tại."});
         if(config["includeComments"]?.GetValue<bool>()==true)return ServiceResult.BadRequest(new{error="Worker hiện thu thập bài và media, chưa hỗ trợ bình luận. Bỏ chọn Thu thập bình luận trước khi chạy."});
         if(config["minLikes"]!.GetValue<int>()>0||config["minComments"]!.GetValue<int>()>0)return ServiceResult.BadRequest(new{error="Bộ lọc tương tác chưa hỗ trợ trên worker hiện tại; đặt tối thiểu về 0."});
-        var aiStatus = JsonSerializer.SerializeToNode(await ai.Status());
-        if (CrawlEvaluationState.ReadinessError(aiStatus) is string aiError)
-            return ServiceResult.Json(new { error = aiError, code = "CLEF_UNAVAILABLE" }, statusCode: 503);
-        if (aiStatus?["busy"]?.GetValue<bool>() == true && aiStatus?["queueEnabled"]?.GetValue<bool>() != true)
-            return ServiceResult.Conflict(new { error = "AI đang bận. Chờ tác vụ AI hiện tại xong trước khi cào và đánh giá." });
+        config["autoEvaluate"] = false;
         var id=Guid.NewGuid();config["id"]=id.ToString();config["targetName"]=JsonNode.Parse(brand.Json)?["name"]?.ToString()??brandId.ToString();config["createdAt"]=DateTimeOffset.UtcNow.ToString("O");config["status"]="pending";config["progress"]=0;config["crawledPosts"]=0;config["workerNode"]="Facebook local";config["ipAddress"]="—";config["latencyMs"]=0;
         var task=new Document{Id=id,Kind="tasks",Json=config.ToJsonString()};db.AddDocument(task);await db.SaveChangesAsync();
         if(!worker.Enqueue(id)){config["status"]="paused";task.Json=config.ToJsonString();await db.SaveChangesAsync();return ServiceResult.Conflict(new{error="Worker vừa nhận tác vụ khác. Tác vụ mới chưa chạy."});}

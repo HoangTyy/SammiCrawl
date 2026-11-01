@@ -172,3 +172,7 @@ Chọn tài khoản cào: tại Cào bài Facebook, đánh dấu tài khoản mu
 
 
 01/11/2026: gateway có hàng đợi AI chung, xem REMOTE-AI-QUEUE.md. Máy client cập nhật dùng job/polling để chờ qua Cloudflare; server giữ FIFO/one-model gate và giới hạn RAM, không lưu queue vào DB. Không tự chạy cào khi triển khai/kiểm tra tính năng này.
+
+## Cào chỉ thu thập — 01/11/2026
+
+Lượt cào mới luôn autoEvaluate=false: chỉ thu thập bài/media và chống trùng, không gọi Clef hay kiểm tra AI/model trước khi chạy; không yêu cầu kênh đang bật để tìm nhóm. Đủ số bài mới thì completed/100%, thiếu nguồn vẫn paused với số bài thực. Bài giữ aiStatus=pending để đánh giá thủ công nếu cần. Không sửa bài hoặc tác vụ lịch sử; không tự chạy Facebook. Startup không sửa task completed vì thiếu đánh giá Clef nữa. Tiến độ/task UI phân biệt lượt collection-only và lượt legacy. Clef thủ công, rewrite và hàng đợi gateway vẫn giữ nguyên.
