@@ -13,6 +13,7 @@ export interface CrawlTask {
   errorReason?: string;
   errorCode?: string;
   duplicatesSkipped?: number;
+  pauseAcknowledged?: boolean;
   clefEvaluatedPosts?: number;
   clefRecommendedPosts?: number;
   clefReviewPosts?: number;

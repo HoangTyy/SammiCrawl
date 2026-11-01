@@ -15,7 +15,7 @@ public interface IRecordsService
     Task<ServiceResult> Update(string kind, Guid id, JsonObject data);
     Task<ServiceResult> Delete(string kind, Guid id);
     Task<ServiceResult> Restore(string kind, Guid id);
-    Task<ServiceResult> CancelTask(Guid id);
+    Task<ServiceResult> DeleteTask(Guid id);
 }
 
 public sealed class RecordsService(IProjectRepository db, IDataProtectionProvider protection, FacebookAccountHealth health) : IRecordsService
@@ -145,5 +145,6 @@ public sealed class RecordsService(IProjectRepository db, IDataProtectionProvide
         db.AddLog(new Audit { Message = $"Đã khôi phục {kind} · {id}" }); await db.SaveChangesAsync(); return ServiceResult.Ok(data);
     }
 
-    public async Task<ServiceResult> CancelTask(Guid id) { var d = await db.FindDocumentAsync(id, "tasks"); if (d == null) return ServiceResult.NotFound(); var j = JsonNode.Parse(d.Json)!; j["status"] = "paused"; j["workerNode"] = "Đã hủy"; d.Json = j.ToJsonString(); db.AddLog(new Audit { Message = $"Đã hủy tác vụ {id}" }); await db.SaveChangesAsync(); return ServiceResult.Ok(); }
+    public async Task<ServiceResult> DeleteTask(Guid id) => await db.DeleteTaskAsync(id) ? ServiceResult.Ok() : ServiceResult.NotFound();
+
 }

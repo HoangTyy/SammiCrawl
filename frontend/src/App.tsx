@@ -42,13 +42,14 @@ function MainAppShell() {
     let previous = {}; try {previous=JSON.parse(localStorage.getItem('sammicrawl_crawl')??'{}');}catch { /* Start with an empty draft. */ }
     localStorage.setItem('sammicrawl_crawl',JSON.stringify({...previous,url,maxPosts,sourceMode:'url',targetType:'page'}));setCurrentTab('crawler-studio');
   };
-  const handleDeleteTask = (id: string) => { void api(`/records/tasks/${id}`, undefined, 'DELETE').then(refresh).catch(e => setConnection(e.message)); };
+  const handleDeleteTask = async (id: string) => { await api(`/records/tasks/${id}`, undefined, 'DELETE'); await refresh(); };
+  const handleTaskAction = async (id:string,action:'pause'|'resume') => { await api(`/tasks/${id}/${action}`, {}); await refresh(); };
   return <div className="cyber-app-shell"><Navbar onLogout={handleLogout} loggingOut={loggingOut} currentTab={currentTab} onSelectTab={setCurrentTab} telemetry={telemetry} onOpenMissionModal={() => setCurrentTab('crawler-studio')} />
   <div role="status" style={{ padding: '8px 24px', color: 'var(--text-secondary)', fontSize: 13 }}>{connection} · {syncStatus}</div>
   <main className="cyber-main-canvas">
   {currentTab === 'dashboard' && <DashboardView telemetry={telemetry} logs={logs} onLaunchTarget={handleLaunchTarget} onNavigateToStudio={() => setCurrentTab('crawler-studio')} />}
   {currentTab === 'crawler-studio' && <CrawlerStudioView onManageAccounts={() => setCurrentTab('facebook-accounts')} onViewQueue={() => { setCurrentTab('queue'); void refresh().catch(e => setConnection(e.message)); }} onViewArticles={brandId => {setArticleBrandId(brandId);setCurrentTab('data-vault');}} />}
-  {currentTab === 'queue' && <TaskQueueView tasks={tasks} onDeleteTask={handleDeleteTask} onNavigateToStudio={() => setCurrentTab('crawler-studio')} />}
+  {currentTab === 'queue' && <TaskQueueView tasks={tasks} onDeleteTask={handleDeleteTask} onTaskAction={handleTaskAction} onNavigateToStudio={() => setCurrentTab('crawler-studio')} />}
   {currentTab === 'data-vault' && <DataVaultView initialBrandId={articleBrandId} onNavigateToStudio={() => setCurrentTab('crawler-studio')} />}
   {currentTab === 'channels' && <ChannelsView onManageAccounts={() => setCurrentTab('facebook-accounts')} onManageBrands={() => setCurrentTab('proxy-stealth')} />}
   {currentTab === 'facebook-accounts' && <FacebookAccountsView />}

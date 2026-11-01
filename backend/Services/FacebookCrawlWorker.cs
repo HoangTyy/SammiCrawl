@@ -7,10 +7,11 @@ namespace SammiCrawl.Backend.Services;
 
 public sealed class FacebookCrawlWorker(IServiceScopeFactory scopes, IDataProtectionProvider protection, IWebHostEnvironment env, ILogger<FacebookCrawlWorker> log) : BackgroundService
 {
-    readonly Channel<Guid> queue = Channel.CreateUnbounded<Guid>(new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
+    readonly Channel<(Guid Id, string Token)> queue = Channel.CreateUnbounded<(Guid Id, string Token)>(new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
     readonly HttpClient mediaHttp = new(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false }) { Timeout = Timeout.InfiniteTimeSpan };
     public override void Dispose() { mediaHttp.Dispose(); base.Dispose(); }
-    public bool Enqueue(Guid id) => queue.Writer.TryWrite(id);
+    string? activeToken;
+    public bool Enqueue(Guid id, string token) => queue.Writer.TryWrite((id, token));
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         // A restart cannot silently replay a partly completed Facebook request.
@@ -29,30 +30,38 @@ public sealed class FacebookCrawlWorker(IServiceScopeFactory scopes, IDataProtec
                     d.Json = j.ToJsonString();
                     db.AddLog(new Audit { Message = $"Đã sửa trạng thái tác vụ {d.Id}: Clef chưa đánh giá xong; không tự cào lại." });
                 }
-                if (j["workerNode"]?.ToString() == "Facebook local" && j["status"]?.ToString() is "pending" or "running") { j["status"]="paused";j["errorReason"]="Ứng dụng khởi động lại; không tự chạy lại tác vụ.";d.Json=j.ToJsonString(); }
+                if (j["workerNode"]?.ToString() == "Facebook local" && j["status"]?.ToString() is "pending" or "running") { j["status"]="paused";j["pauseAcknowledged"]=true;j["errorReason"]="Ứng dụng khởi động lại; không tự chạy lại tác vụ.";d.Json=j.ToJsonString(); }
             }
             await db.SaveChangesAsync();
         }
-        await foreach (var id in queue.Reader.ReadAllAsync(stoppingToken))
+        await foreach (var item in queue.Reader.ReadAllAsync(stoppingToken))
         {
-            try { if (await Cancelled(id)) continue; await Run(id, stoppingToken); }
+            var id=item.Id;
+            try { await Run(id, item.Token, stoppingToken); }
             catch (OperationCanceledException) { await State(id, "paused", "Tác vụ đã dừng."); }
             catch (Exception ex) { log.LogWarning("Crawl {JobId} failed: {Type}", id, ex.GetType().Name); await State(id,"failed","Không hoàn tất thu thập; xem mã lỗi và số bài đã lưu.","CRAWL_FAILED"); }
+            finally { activeToken=null; }
         }
     }
     async Task State(Guid id,string status,string message,string? code=null,int? count=null,int? duplicates=null,CrawlEvaluationState? evaluation=null)
     {
-        using var scope=scopes.CreateScope();var db=scope.ServiceProvider.GetRequiredService<IProjectRepository>();var d=await db.FindDocumentAsync(id,"tasks");if(d is null)return;
-        var j=JsonNode.Parse(d.Json)!.AsObject();if(j["status"]?.ToString()=="paused"&&status=="running")throw new OperationCanceledException();
-        j["status"]=status;j["errorReason"]=message;j["errorCode"]=code;
-        evaluation?.WriteTo(j);
-        if(count.HasValue)j["crawledPosts"]=count.Value;
-        j["progress"]=CrawlEvaluationState.Progress(status,j["crawledPosts"]?.GetValue<int>()??0,j["maxPosts"]?.GetValue<int>()??1,j["clefEvaluatedPosts"]?.GetValue<int>()??0);
-        if(duplicates.HasValue)j["duplicatesSkipped"]=duplicates.Value;
-        d.Json=j.ToJsonString();db.AddLog(new Audit{Message=$"Cào {id}: {message}"});await db.SaveChangesAsync();
+        for(var attempt=0;attempt<4;attempt++)
+        {
+            using var scope=scopes.CreateScope();var db=scope.ServiceProvider.GetRequiredService<IProjectRepository>();var d=await db.FindDocumentAsync(id,"tasks");if(d is null)return;
+            var j=JsonNode.Parse(d.Json)!.AsObject();
+            if(activeToken is not null&&j["executionToken"]?.ToString()!=activeToken){if(status=="running")throw new OperationCanceledException();return;}
+            if(j["status"]?.ToString()=="paused"&&status=="running")throw new OperationCanceledException();
+            j["status"]=status;j["errorReason"]=message;j["errorCode"]=code;
+            if(status is "paused" or "failed" or "completed"){j["pauseAcknowledged"]=true;}
+            evaluation?.WriteTo(j);if(count.HasValue)j["crawledPosts"]=count.Value;
+            j["progress"]=CrawlEvaluationState.Progress(status,j["crawledPosts"]?.GetValue<int>()??0,j["maxPosts"]?.GetValue<int>()??1,j["clefEvaluatedPosts"]?.GetValue<int>()??0);
+            if(duplicates.HasValue)j["duplicatesSkipped"]=duplicates.Value;
+            if(await db.TryUpdateTaskAsync(id,d.Json,j.ToJsonString(),$"Cào {id}: {message}"))return;
+        }
+        throw new OperationCanceledException();
     }
     async Task<bool> Cancelled(Guid id)
-    {using var s=scopes.CreateScope();var d=await s.ServiceProvider.GetRequiredService<IProjectRepository>().FindDocumentAsync(id,"tasks");return d is null||JsonNode.Parse(d.Json)?["status"]?.ToString()=="paused";}
+    {using var s=scopes.CreateScope();var d=await s.ServiceProvider.GetRequiredService<IProjectRepository>().FindDocumentAsync(id,"tasks");var j=d is null?null:JsonNode.Parse(d.Json);return j is null||j["status"]?.ToString()=="paused"||(activeToken is not null&&j["executionToken"]?.ToString()!=activeToken);}
     async Task Delay(Guid id,int ms,CancellationToken ct){var watch=System.Diagnostics.Stopwatch.StartNew();while(watch.ElapsedMilliseconds<ms){if(await Cancelled(id))throw new OperationCanceledException();var remaining=ms-watch.ElapsedMilliseconds;if(remaining>0)await Task.Delay((int)Math.Min(remaining,1000),ct);}}
     async Task<FacebookCheck?> Blocked(IPage page)
     {
@@ -98,12 +107,29 @@ public sealed class FacebookCrawlWorker(IServiceScopeFactory scopes, IDataProtec
         }
         return found.Values.ToList();
     }
-    async Task Run(Guid id,CancellationToken ct)
+    async Task Run(Guid id,string token,CancellationToken ct)
     {
-        JsonObject job;List<Guid> accountIds;
-        using(var s=scopes.CreateScope()){var d=await s.ServiceProvider.GetRequiredService<IProjectRepository>().FindDocumentAsync(id,"tasks");job=JsonNode.Parse(d!.Json)!.AsObject();accountIds=job["crawlAccountIds"]!.AsArray().Select(n=>Guid.Parse(n!.ToString())).ToList();}
-        var target=job["url"]!.ToString();var searchGroups=job["sourceMode"]?.ToString()=="group-search";var groupCounts=new Dictionary<string,int>();var visitedGroups=new HashSet<string>();var brandId=Guid.Parse(job["brandId"]!.ToString());var max=job["maxPosts"]!.GetValue<int>();var count=0;var dup=0;var evaluation=new CrawlEvaluationState();var seen=new HashSet<string>();
-        await State(id,"running","Bắt đầu thu thập bằng phiên Facebook đã lưu.",count:0);
+        JsonObject job;List<Guid> accountIds;CrawlResumeState saved;
+        using(var s=scopes.CreateScope())
+        {
+            var db=s.ServiceProvider.GetRequiredService<IProjectRepository>();var d=await db.FindDocumentAsync(id,"tasks");if(d is null)return;
+            job=JsonNode.Parse(d.Json)!.AsObject();
+            if(!CrawlResumeState.CanClaim(job,token))return;
+            job["status"]="running";job["pauseAcknowledged"]=false;
+            if(!await db.TryUpdateTaskAsync(id,d.Json,job.ToJsonString(),$"Worker nhận tác vụ {id}"))return;
+            activeToken=token;accountIds=job["crawlAccountIds"]!.AsArray().Select(n=>Guid.Parse(n!.ToString())).ToList();
+            saved=new CrawlResumeState(job,(await db.ListDocumentsAsync("articles")).Select(d=>JsonNode.Parse(d.Json)!.AsObject()));
+        }
+        var target=job["url"]!.ToString();var searchGroups=job["sourceMode"]?.ToString()=="group-search";var groupCounts=saved.BySource;var visitedGroups=new HashSet<string>(groupCounts.Keys);var brandId=Guid.Parse(job["brandId"]!.ToString());var max=job["maxPosts"]!.GetValue<int>();var count=saved.Captured;var dup=saved.Duplicates;var evaluation=saved.Evaluation;var seen=saved.Seen;
+        await State(id,"running","Bắt đầu/tiếp tục thu thập, giữ bài đã lưu và kiểm tra trùng.",count:count,duplicates:dup,evaluation:evaluation);
+        foreach(var articleId in saved.PendingEvaluation)
+        {
+            if(await Cancelled(id))throw new OperationCanceledException();
+            using var s=scopes.CreateScope();var assessed=await s.ServiceProvider.GetRequiredService<IContentService>().EvaluateArticle(articleId);
+            if(!evaluation.Record(assessed)){await State(id,"paused","Bài đã lưu còn chờ Clef; chưa tiếp tục thu thập.","CLEF_EVALUATION_INCOMPLETE",count,dup,evaluation);return;}
+            await State(id,"running","Đã đánh giá tiếp bài đã lưu.",count:count,duplicates:dup,evaluation:evaluation);
+        }
+        if(count>=max){await State(id,evaluation.Evaluated>=count?"completed":"paused","Đã kiểm tra số bài và đánh giá đã lưu.",evaluation.Evaluated>=count?null:"CLEF_EVALUATION_INCOMPLETE",count,dup,evaluation);return;}
         using var pw=await Playwright.CreateAsync();await using var browser=await pw.Chromium.LaunchAsync(new(){Headless=true,Timeout=30000});
         foreach(var accountId in accountIds)
         {
@@ -122,7 +148,7 @@ public sealed class FacebookCrawlWorker(IServiceScopeFactory scopes, IDataProtec
             var page=await context.NewPageAsync();
             var targets=searchGroups ? await DiscoverGroups(page,job,id,accountId,count,dup,ct) : job["sourceMode"]?.ToString()=="brand-links" ? job["sourceUrls"]!.AsArray().Select(u => new JsonObject { ["url"]=u!.ToString() }).ToList() : new List<JsonObject> { new() { ["url"]=target } };
             if(targets is null)return;
-            var perAccount=0;
+            var perAccount=saved.ByAccount.GetValueOrDefault(accountId.ToString());
             foreach(var group in targets)
             {
             if(count>=max||perAccount>=job["accountPostLimit"]!.GetValue<int>())break;
@@ -186,9 +212,10 @@ public sealed class FacebookCrawlWorker(IServiceScopeFactory scopes, IDataProtec
                     {var m=await Download(context,src,"image",id,ct);if(m is not null)media.Add(m);else warnings.Add("Không tải được một ảnh của bài nguồn.");}
                     foreach(var src in candidate["videos"]!.AsArray().Select(n=>n!.ToString()).Distinct().Take(4))
                     {var m=await Download(context,src,"video",id,ct);if(m is not null)media.Add(m);else warnings.Add("Video chưa tải được file gốc; không coi media là đầy đủ.");}
-                    var article=new JsonObject{["content"]=candidate["content"]!.ToString(),["title"]=candidate["content"]!.ToString()[..Math.Min(100,candidate["content"]!.ToString().Length)],["sourceUrl"]=source,["sourceAccountId"]=accountId.ToString(),["crawlTaskId"]=id.ToString(),["media"]=media,["mediaWarnings"]=warnings,["aiStatus"]="pending",["sourceAuthor"]=candidate["author"]!.ToString(),["crawlTopicDescription"]=job["topicDescription"]?.ToString()};
+                    var article=new JsonObject{["content"]=candidate["content"]!.ToString(),["title"]=candidate["content"]!.ToString()[..Math.Min(100,candidate["content"]!.ToString().Length)],["sourceUrl"]=source,["sourceAccountId"]=accountId.ToString(),["crawlTaskId"]=id.ToString(),["crawlSourceUrl"]=target,["media"]=media,["mediaWarnings"]=warnings,["aiStatus"]="pending",["sourceAuthor"]=candidate["author"]!.ToString(),["crawlTopicDescription"]=job["topicDescription"]?.ToString()};
                     FacebookPostMetadata.Apply(article, candidate["metadata"], metadataCapturedAt);
                     if(sourceGroupId.HasValue) { article["sourceGroupId"]=sourceGroupId.Value.ToString(); article["sourceGroupName"]=group["name"]!.ToString(); article["sourceGroupUrl"]=target; article["channelEvaluationRequired"]=true; }
+                    if(await Cancelled(id))throw new OperationCanceledException();
                     using(var s=scopes.CreateScope())
                     {
                         var result=await s.ServiceProvider.GetRequiredService<IProjectRepository>().IngestArticleAsync(brandId,article);

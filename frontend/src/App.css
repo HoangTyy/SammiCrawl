@@ -2166,3 +2166,13 @@
 .crawl-account-option:has(input:disabled) { opacity:.65; cursor:default; }
 
 .rewrite-job-panel{padding:18px;margin-bottom:18px}.rewrite-job-panel h3{margin:0;display:flex;align-items:center;gap:8px}.rewrite-job-list{display:grid;gap:10px}.rewrite-job-row{display:flex;align-items:center;gap:16px;padding:12px;border:1px solid var(--border-subtle);border-radius:10px}.rewrite-job-row>div{flex:1;min-width:0}.rewrite-job-row strong{display:block;overflow-wrap:anywhere}.rewrite-job-row small{display:block;color:var(--text-secondary);margin-top:4px}.rewrite-job-row>span{max-width:40%;font-size:13px;color:var(--text-secondary)}@media(max-width:600px){.rewrite-job-row{flex-wrap:wrap}.rewrite-job-row>div{flex-basis:100%}.rewrite-job-row>span{max-width:100%;flex:1}}
+
+/* Keep long crawl targets to one line without widening the queue table. */
+.queue-view .table-target-wrap{min-width:0;width:clamp(180px,30vw,420px);max-width:100%}
+.queue-view .target-title-main,.queue-view .target-url-sub>span{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.queue-view .target-url-sub{min-width:0;max-width:100%;overflow:hidden;white-space:nowrap}
+.queue-view .target-url-sub>span{flex:1}
+.queue-view .target-url-sub>svg{flex-shrink:0}
+@media(max-width:600px){.queue-view .cyber-table .table-target-wrap{width:100%}.queue-view .cyber-table .target-url-sub{white-space:nowrap;overflow:hidden}}
+
+.task-control-buttons{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.task-control-buttons .btn-preset{white-space:nowrap;min-height:34px;padding:7px 10px}@media(max-width:600px){.task-control-buttons{justify-content:flex-start}}

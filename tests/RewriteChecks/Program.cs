@@ -66,6 +66,24 @@ try
     var taskSnapshot=JsonNode.Parse(repo.Rows.First(r=>r.Kind=="tasks").Json)!;
     Check(taskSnapshot["sourceUrls"]!.AsArray().Count==2 && taskSnapshot["sourceUrls"]![0]!.ToString()=="https://www.facebook.com/groups/123/" && !taskSnapshot.ToJsonString().Contains("ignored-client-url"), "crawl snapshots brand sources in order instead of trusting client URLs");
     Check(taskSnapshot["status"]!.ToString()=="pending", "crawl submission persists pending state for UI queue");
+    var taskRow=repo.Rows.First(r=>r.Kind=="tasks");var taskId=taskRow.Id;
+    var controls=new TaskControlService(repo,worker,ai);
+    Check((await controls.Pause(taskId)).Status==200 && JsonNode.Parse(taskRow.Json)?["pauseAcknowledged"]?.GetValue<bool>()==true,"pause queued task acknowledges without starting Facebook");
+    var paused=JsonNode.Parse(taskRow.Json)!.AsObject();paused["crawledPosts"]=2;paused["progress"]=20;taskRow.Json=paused.ToJsonString();var oldToken=paused["executionToken"]!.ToString();
+    var captured1=new JsonObject{["id"]=Guid.NewGuid().ToString(),["crawlTaskId"]=taskId.ToString(),["sourceAccountId"]=crawlAccountId.ToString(),["sourceGroupUrl"]="https://facebook.com/groups/123/",["sourceUrl"]="https://facebook.com/groups/123/posts/1/",["aiStatus"]="rejected",["aiScore"]=20,["aiEvaluatedAt"]=DateTimeOffset.UtcNow.ToString("O"),["deletedAt"]="fixture"};
+    var captured2=captured1.DeepClone().AsObject();captured2["id"]=Guid.NewGuid().ToString();captured2["aiStatus"]="pending";captured2["sourceUrl"]="https://facebook.com/groups/123/posts/2/";
+    var checkpoint=new CrawlResumeState(paused,new[]{captured1,captured2});
+    Check(checkpoint.Captured==2 && checkpoint.Evaluation.Rejected==1 && checkpoint.PendingEvaluation.Count==1 && checkpoint.ByAccount[crawlAccountId.ToString()]==2 && checkpoint.Seen.Count==2,"resume restores counters, rejected history, account usage and pending Clef");
+    Check((await controls.Resume(taskId)).Status==200 && JsonNode.Parse(taskRow.Json)?["crawledPosts"]?.GetValue<int>()==2,"resume queues same task without resetting captured count");
+    var resumed=JsonNode.Parse(taskRow.Json)!.AsObject();Check(!CrawlResumeState.CanClaim(resumed,oldToken)&&CrawlResumeState.CanClaim(resumed,resumed["executionToken"]!.ToString()),"old queue token cannot claim resumed task");
+    Check((await controls.Resume(taskId)).Status==409,"repeated resume cannot enqueue running or pending task again");
+    resumed["status"]="running";taskRow.Json=resumed.ToJsonString();
+    Check((await controls.Pause(taskId)).Status==200 && (await controls.Resume(taskId)).Status==409,"active pause waits for worker acknowledgment before resume");
+    Check(!await repo.TryUpdateTaskAsync(taskId,resumed.ToJsonString(),resumed.ToJsonString(),"stale"),"stale worker state cannot overwrite pause command");
+    var protection=new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider();var records=new RecordsService(repo,protection,new FacebookAccountHealth(protection));
+    var keptArticles=repo.Rows.Count(r=>r.Kind=="articles");
+    Check((await records.DeleteTask(taskId)).Status==200 && !repo.Rows.Any(r=>r.Kind=="tasks"&&r.Id==taskId) && repo.Rows.Count(r=>r.Kind=="articles")==keptArticles,"delete removes task record completely without deleting articles");
+    Check((await controls.Resume(taskId)).Status==404 && (await records.DeleteTask(taskId)).Status==404,"deleted task cannot resume or be deleted twice as success");
     var result = await service.CreateDraft(articleId, Request());
     Check(result.Status == 200 && calls.Count == 1, "image article creates draft with one rewrite call and no OCR confirmation");
     var payload = calls.Single(); var draft = (JsonObject)result.Value!;
@@ -108,5 +126,7 @@ sealed class MemoryRepository : IProjectRepository
     public void AddUser(ProjectUser user) => throw new NotSupportedException();
     public Task<(Document Record, bool Duplicate, string? Reason)> IngestArticleAsync(Guid brandId, JsonObject article) => throw new NotSupportedException();
     public Task<Guid> TrackSourceGroupAsync(Guid brandId, string name, string url, string keyword, Guid accountId, Guid taskId) => throw new NotSupportedException();
+    public Task<bool> DeleteTaskAsync(Guid id)=>Task.FromResult(Rows.RemoveAll(d=>d.Kind=="tasks"&&d.Id==id)>0);
+    public Task<bool> TryUpdateTaskAsync(Guid id,string expectedJson,string updatedJson,string auditMessage){var row=Rows.FirstOrDefault(d=>d.Kind=="tasks"&&d.Id==id&&d.Json==expectedJson);if(row is null)return Task.FromResult(false);row.Json=updatedJson;return Task.FromResult(true);}
     public Task<bool> TryUpdateBrandAsync(Guid id, string expectedJson, string updatedJson, string auditMessage) => throw new NotSupportedException();
 }

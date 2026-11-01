@@ -24,5 +24,5 @@ public sealed class RecordsController(IRecordsService service) : ControllerBase
     public async Task<IActionResult> Restore([FromRoute] string kind, [FromRoute] Guid id) => (await service.Restore(kind, id)).ToActionResult();
 
     [HttpDelete("/api/records/tasks/{id:guid}")]
-    public async Task<IActionResult> CancelTask([FromRoute] Guid id) => (await service.CancelTask(id)).ToActionResult();
+    public async Task<IActionResult> DeleteTask([FromRoute] Guid id) => (await service.DeleteTask(id)).ToActionResult();
 }

@@ -235,6 +235,7 @@ public sealed class ContentService(IProjectRepository db, AiRunner ai, IWebHostE
         if (taskDoc is null) return;
         var task = JsonNode.Parse(taskDoc.Json)!.AsObject();
         if (task["workerNode"]?.ToString() != "Facebook local") return;
+        if (task["status"]?.ToString() is "running" or "pending" || task["errorCode"]?.ToString() == "USER_PAUSED") return;
         var evaluation = new CrawlEvaluationState();
         foreach (var row in await db.ListDocumentsAsync("articles"))
         {
@@ -255,7 +256,7 @@ public sealed class ContentService(IProjectRepository db, AiRunner ai, IWebHostE
                 : $"Clef đã đánh giá {evaluation.Evaluated}/{captured} bài đã thu thập; còn thiếu {target-captured} bài thu thập. Tạo lượt cào mới để tiếp tục; không tự chạy lại Facebook.";
         }
         task["progress"] = CrawlEvaluationState.Progress(task["status"]?.ToString() ?? "paused", captured, target, evaluation.Evaluated);
-        taskDoc.Json = task.ToJsonString();
+        await db.TryUpdateTaskAsync(taskId, taskDoc.Json, task.ToJsonString(), $"Cập nhật thống kê Clef tác vụ {taskId}");
     }
 
     public async Task<ServiceResult> Rewrite(RewriteRequest r)

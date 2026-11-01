@@ -1,3 +1,4 @@
+import { useDialogKeyboard } from '../useDialogKeyboard';
 import { HelpTooltip } from '../HelpTooltip';
 import React, { useState } from 'react';
 import { 
@@ -6,7 +7,7 @@ import {
   CheckCircle2, 
   AlertCircle, 
   Clock, 
-  Trash2, 
+  Trash2, Pause, Play, X,
   ExternalLink,
   Plus, 
   Cpu
@@ -16,18 +17,26 @@ import { useApp } from '../../context/AppContext';
 
 interface TaskQueueViewProps {
   tasks: CrawlTask[];
-  onDeleteTask: (id: string) => void;
+  onDeleteTask: (id: string) => Promise<void>;
+  onTaskAction:(id:string,action:'pause'|'resume')=>Promise<void>;
   onNavigateToStudio: () => void;
 }
 
 export const TaskQueueView: React.FC<TaskQueueViewProps> = ({
   tasks,
   onDeleteTask,
+  onTaskAction,
   onNavigateToStudio
 }) => {
   const { t } = useApp();
   const [activeFilter, setActiveFilter] = useState<string>('all');
   const [searchKey, setSearchKey] = useState<string>('');
+  const [actionId,setActionId]=useState<string|null>(null);
+  const [actionError,setActionError]=useState('');
+  const [deleting,setDeleting]=useState<CrawlTask|null>(null);
+  const deleteDialogRef=useDialogKeyboard(Boolean(deleting),()=>setDeleting(null),Boolean(actionId));
+  const perform=async(id:string,action:'pause'|'resume'|'delete')=>{setActionId(id);setActionError('');try{if(action==='delete'){await onDeleteTask(id);setDeleting(null);}else await onTaskAction(id,action);}catch(e){setActionError((e as Error).message);}finally{setActionId(null);}};
+
 
   const filteredTasks = tasks.filter(t => {
     if (activeFilter !== 'all' && t.status !== activeFilter) return false;
@@ -156,7 +165,7 @@ export const TaskQueueView: React.FC<TaskQueueViewProps> = ({
                   <th>{t.queue.colProgress}</th>
                   <th>Bài thu được</th>
                   <th>{t.queue.colStatus}</th>
-                  <th className="text-right">{t.queue.colActions}</th>
+                  <th className="text-right">Thao tác</th>
                 </tr>
               </thead>
               <tbody>
@@ -164,14 +173,15 @@ export const TaskQueueView: React.FC<TaskQueueViewProps> = ({
                   <tr key={task.id}>
                     <td data-label="Mục tiêu Facebook">
                       <div className="table-target-wrap">
-                        <span className="target-title-main">{task.targetName}</span>
+                        <span className="target-title-main" title={task.targetName}>{task.targetName}</span>
                         <a 
                           href={task.url} 
                           target="_blank" 
                           rel="noreferrer" 
                           className="target-url-sub"
+                          title={task.url}
                         >
-                          {task.url} <ExternalLink size={10} />
+                          <span>{task.url}</span> <ExternalLink size={10} />
                         </a>
                       </div>
                     </td>
@@ -202,14 +212,11 @@ export const TaskQueueView: React.FC<TaskQueueViewProps> = ({
                       {task.errorReason && <details className="task-status-details"><summary>Xem chi tiết</summary><p>{task.errorCode && <strong>{task.errorCode}: </strong>}{task.errorReason}</p></details>}
                     </td>
                     <td data-label="Thao tác" className="text-right">
-                      <button 
-                        type="button" 
-                        className="btn-delete-cyber"
-                        onClick={() => onDeleteTask(task.id)}
-                        title="Xóa tác vụ"
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                      <div className="task-control-buttons">
+                        {(task.status==='pending'||task.status==='running')&&<button type="button" className="btn-preset" disabled={actionId===task.id} title="Tạm dừng lượt cào" onClick={()=>void perform(task.id,'pause')}><Pause size={14}/> Tạm dừng</button>}
+                        {(task.status==='paused'||task.status==='failed')&&<button type="button" className="btn-preset" disabled={actionId===task.id||task.pauseAcknowledged===false} title={task.pauseAcknowledged===false?'Đang chờ worker dừng xong':'Tiếp tục vào hàng đợi, giữ tiến độ'} onClick={()=>void perform(task.id,'resume')}><Play size={14}/> {task.pauseAcknowledged===false?'Đang dừng…':'Tiếp tục'}</button>}
+                        <button type="button" className="btn-preset danger-button" disabled={actionId===task.id} title="Xóa tác vụ khỏi danh sách, giữ các bài đã thu thập" onClick={()=>{setActionError('');setDeleting(task);}}><Trash2 size={14}/> Xóa</button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -218,6 +225,8 @@ export const TaskQueueView: React.FC<TaskQueueViewProps> = ({
           </div>
         )}
       </div>
+      {actionError&&<p role="alert" className="config-notice">{actionError}</p>}
+      {deleting&&<div className="workspace-modal-overlay"><section ref={deleteDialogRef} role="dialog" aria-modal="true" aria-label="Xóa tác vụ" className="cyber-panel workspace-delete"><h3>Xóa tác vụ này?</h3><p>{deleting.targetName}</p><p>Tác vụ sẽ bị xóa hẳn khỏi danh sách. Bài viết và media đã thu thập vẫn được giữ. Worker sẽ dừng sau thao tác hiện tại.</p><div className="preset-buttons-row"><button className="btn-preset" disabled={actionId===deleting.id} onClick={()=>setDeleting(null)}><X size={14}/> Hủy</button><button className="btn-preset danger-button" disabled={actionId===deleting.id} onClick={()=>void perform(deleting.id,'delete')}><Trash2 size={14}/> Xóa tác vụ</button></div>{actionError&&<p role="alert">{actionError}</p>}</section></div>}
     </div>
   );
 };

@@ -53,6 +53,21 @@ public sealed class ProjectRepository(Store store, LiveUpdates liveUpdates) : IP
     public void AddLog(Audit audit) => store.Logs.Add(audit);
     public Task ReloadAsync(Document document) => store.Entry(document).ReloadAsync();
     public async Task<int> SaveChangesAsync() { var count = await store.SaveChangesAsync(); if (count > 0) liveUpdates.Notify(); return count; }
+    public async Task<bool> DeleteTaskAsync(Guid id)
+    {
+        await using var tx = await store.Database.BeginTransactionAsync();
+        if (await store.Documents.Where(d => d.Id == id && d.Kind == "tasks").ExecuteDeleteAsync() == 0) return false;
+        store.Logs.Add(new Audit { Message = $"Đã xóa tác vụ {id}; giữ bài đã thu thập." });
+        await store.SaveChangesAsync(); await tx.CommitAsync(); liveUpdates.Notify(); return true;
+    }
+    public async Task<bool> TryUpdateTaskAsync(Guid id, string expectedJson, string updatedJson, string auditMessage)
+    {
+        await using var tx = await store.Database.BeginTransactionAsync();
+        if (await store.Documents.Where(d => d.Id == id && d.Kind == "tasks" && d.Json == expectedJson)
+            .ExecuteUpdateAsync(u => u.SetProperty(d => d.Json, updatedJson)) == 0) return false;
+        store.Logs.Add(new Audit { Message = auditMessage });
+        await store.SaveChangesAsync(); await tx.CommitAsync(); liveUpdates.Notify(); return true;
+    }
     public async Task<bool> TryUpdateBrandAsync(Guid id, string expectedJson, string updatedJson, string auditMessage)
     {
         await using var transaction = await store.Database.BeginTransactionAsync();
