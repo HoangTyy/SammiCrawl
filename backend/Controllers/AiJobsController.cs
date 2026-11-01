@@ -59,14 +59,14 @@ public sealed class AiJobsController(AiRunner ai, AiGatewayQueue queue) : Contro
         if (!Trusted) return Unauthorized();
         if (ai.IsRemote) return StatusCode(503);
         var snapshot = queue.Find(id);
-        return snapshot is null ? NotFound(new { code="AI_JOB_NOT_FOUND", error="Tác vụ AI không còn trên gateway (hết hạn hoặc gateway đã khởi động lại). Không tự gửi lại." }) : Ok(snapshot);
+        return snapshot is null || snapshot.Operation is not ("rewrite" or "evaluate") ? NotFound(new { code="AI_JOB_NOT_FOUND", error="Tác vụ AI không còn trên gateway (hết hạn hoặc gateway đã khởi động lại). Không tự gửi lại." }) : Ok(snapshot);
     }
     [HttpDelete("/bridge/jobs/{id:guid}"), EnableRateLimiting("remote-ai-poll")]
     public IActionResult Cancel(Guid id)
     {
         if (!Trusted) return Unauthorized();
         if (ai.IsRemote) return StatusCode(503);
-        if (queue.Find(id) is null) return NotFound();
+        if (queue.Find(id) is not { Operation: "rewrite" or "evaluate" }) return NotFound();
         return queue.CancelQueued(id) ? Ok(new { state="cancelled" }) : Conflict(new { code="AI_JOB_NOT_QUEUED", error="Chỉ bỏ được yêu cầu đang chờ. AI đang chạy phải hoàn tất và giải phóng model trước lượt sau." });
     }
 }

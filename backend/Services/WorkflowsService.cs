@@ -23,7 +23,7 @@ public sealed class WorkflowsService(IProjectRepository db, AiRunner ai, Faceboo
         var brand = await db.FindDocumentAsync(brandId, "brands");
         if (brand is null || JsonNode.Parse(brand.Json)?["deletedAt"] is not null) return ServiceResult.BadRequest(new { error = "Thương hiệu không còn hoạt động." });
         var mode = config["sourceMode"]?.ToString() ?? "url";
-        if (mode is not ("url" or "group-search")) return ServiceResult.BadRequest(new { error = "Cách chọn nguồn không hợp lệ." });
+        if (mode is not ("url" or "group-search" or "brand-links")) return ServiceResult.BadRequest(new { error = "Cách chọn nguồn không hợp lệ." });
         Uri? url = null;
         if (mode == "url" && (!Uri.TryCreate(config["url"]?.ToString(), UriKind.Absolute, out url) || url.Scheme != "https" || !(url.Host == "facebook.com" || url.Host.EndsWith(".facebook.com")))) return ServiceResult.BadRequest(new { error = "Nhập URL Facebook hợp lệ." });
         if (mode == "group-search")
@@ -38,6 +38,14 @@ public sealed class WorkflowsService(IProjectRepository db, AiRunner ai, Faceboo
             if (!BrandPolicy.Channels(brandProfile).Any(c => c is not null && BrandPolicy.Flag(c, "active"))) return ServiceResult.BadRequest(new { error = "Thêm ít nhất một kênh đang bật để Clef đối chiếu bài với kênh." });
             config["groupKeywords"] = string.Join("\n", keywords);
             config["url"] = "https://www.facebook.com/search/groups/?q=" + Uri.EscapeDataString(keywords[0]);
+        }
+        if (mode == "brand-links")
+        {
+            var sources = JsonNode.Parse(brand.Json)?["crawlSourceUrls"];
+            if (BrandPolicy.ValidateCrawlSources(sources, true) is string sourceError) return ServiceResult.BadRequest(new { error = sourceError });
+            var urls = BrandPolicy.CrawlSources(sources!.ToString());
+            config["sourceUrls"] = new JsonArray(urls.Select(v => JsonValue.Create(v)).ToArray());
+            config["url"] = urls[0];
         }
         config["sourceMode"] = mode;
         foreach (var (field, min, max) in new (string, double, double)[] { ("maxPosts", 1, 1000), ("maxScrolls", 1, 2000), ("delayMinMs", 500, 120000), ("delayMaxMs", 500, 120000), ("minLikes", 0, 10000000), ("minComments", 0, 10000000), ("accountPostLimit", 1, 1000), ("accountRestMinMs", 1000, 3600000), ("accountRestMaxMs", 1000, 3600000) })
@@ -55,18 +63,15 @@ public sealed class WorkflowsService(IProjectRepository db, AiRunner ai, Faceboo
             return ServiceResult.BadRequest(new { error = capacityError, code = "CRAWL_CAPACITY_EXCEEDED" });
         if (mode == "group-search" && config["maxPosts"]!.GetValue<int>() > (long)config["maxGroups"]!.GetValue<int>() * config["groupPostLimit"]!.GetValue<int>())
             return ServiceResult.BadRequest(new { error="Tổng số bài vượt số nhóm tối đa × số bài tối đa mỗi nhóm.", code="GROUP_CAPACITY_EXCEEDED" });
-        config["crawlAccountIds"] = new JsonArray(accounts.Select(a => JsonValue.Create(a.Id.ToString())).ToArray()); config["extractMedia"] = true; config["targetType"] = mode == "group-search" || url!.AbsolutePath.StartsWith("/groups/") ? "group" : "page";
-        if(worker.IsBusy)return ServiceResult.Conflict(new{error="Đang có lượt cào chạy. Chờ hoàn tất hoặc dừng lượt hiện tại."});
+        config["crawlAccountIds"] = new JsonArray(accounts.Select(a => JsonValue.Create(a.Id.ToString())).ToArray()); config["extractMedia"] = true; config["targetType"] = mode == "brand-links" ? "mixed" : (mode == "group-search" || url!.AbsolutePath.StartsWith("/groups/") ? "group" : "page");
         if(config["includeComments"]?.GetValue<bool>()==true)return ServiceResult.BadRequest(new{error="Worker hiện thu thập bài và media, chưa hỗ trợ bình luận. Bỏ chọn Thu thập bình luận trước khi chạy."});
         if(config["minLikes"]!.GetValue<int>()>0||config["minComments"]!.GetValue<int>()>0)return ServiceResult.BadRequest(new{error="Bộ lọc tương tác chưa hỗ trợ trên worker hiện tại; đặt tối thiểu về 0."});
         var aiStatus = JsonSerializer.SerializeToNode(await ai.Status());
         if (CrawlEvaluationState.ReadinessError(aiStatus) is string aiError)
             return ServiceResult.Json(new { error = aiError, code = "CLEF_UNAVAILABLE" }, statusCode: 503);
-        if (aiStatus?["busy"]?.GetValue<bool>() == true && aiStatus?["queueEnabled"]?.GetValue<bool>() != true)
-            return ServiceResult.Conflict(new { error = "AI đang bận. Chờ tác vụ AI hiện tại xong trước khi cào và đánh giá." });
-        var id=Guid.NewGuid();config["id"]=id.ToString();config["targetName"]=JsonNode.Parse(brand.Json)?["name"]?.ToString()??brandId.ToString();config["createdAt"]=DateTimeOffset.UtcNow.ToString("O");config["status"]="pending";config["progress"]=0;config["crawledPosts"]=0;config["workerNode"]="Facebook local";config["ipAddress"]="—";config["latencyMs"]=0;
+        var id=Guid.NewGuid();config["id"]=id.ToString();config["targetName"]=JsonNode.Parse(brand.Json)?["name"]?.ToString()??brandId.ToString();config["createdAt"]=DateTimeOffset.UtcNow.ToString("O");config["status"]="pending";config["errorReason"]="Đã vào hàng đợi cào; chờ worker xử lý lần lượt.";config["progress"]=0;config["crawledPosts"]=0;config["workerNode"]="Facebook local";config["ipAddress"]="—";config["latencyMs"]=0;
         var task=new Document{Id=id,Kind="tasks",Json=config.ToJsonString()};db.AddDocument(task);await db.SaveChangesAsync();
-        if(!worker.Enqueue(id)){config["status"]="paused";task.Json=config.ToJsonString();await db.SaveChangesAsync();return ServiceResult.Conflict(new{error="Worker vừa nhận tác vụ khác. Tác vụ mới chưa chạy."});}
+        if(!worker.Enqueue(id)){config["status"]="paused";task.Json=config.ToJsonString();await db.SaveChangesAsync();return ServiceResult.Conflict(new{error="Không thể thêm vào hàng đợi cào. Tác vụ chưa chạy."});}
         return ServiceResult.Ok(new{taskId=id,status="pending"});
     }
 

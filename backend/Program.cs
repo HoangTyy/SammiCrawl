@@ -34,6 +34,7 @@ builder.Services.AddSingleton<AiRunner>();
 builder.Services.AddOptions<AiQueueOptions>().BindConfiguration("AiQueue");
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<AiGatewayQueue>();
+builder.Services.AddSingleton<DraftRewriteQueue>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<AiGatewayQueue>());
 builder.Services.AddSingleton<FacebookAccountHealth>();
 if (args.Contains("--migrate-postgres")) { await DatabaseTransfer.Run(builder.Configuration); return; }

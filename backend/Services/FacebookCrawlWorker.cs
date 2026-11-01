@@ -7,12 +7,10 @@ namespace SammiCrawl.Backend.Services;
 
 public sealed class FacebookCrawlWorker(IServiceScopeFactory scopes, IDataProtectionProvider protection, IWebHostEnvironment env, ILogger<FacebookCrawlWorker> log) : BackgroundService
 {
-    readonly Channel<Guid> queue = Channel.CreateUnbounded<Guid>();
+    readonly Channel<Guid> queue = Channel.CreateUnbounded<Guid>(new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
     readonly HttpClient mediaHttp = new(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false }) { Timeout = Timeout.InfiniteTimeSpan };
     public override void Dispose() { mediaHttp.Dispose(); base.Dispose(); }
-    int busy;
-    public bool IsBusy => Volatile.Read(ref busy) != 0;
-    public bool Enqueue(Guid id) { if (Interlocked.CompareExchange(ref busy, 1, 0) != 0) return false; queue.Writer.TryWrite(id); return true; }
+    public bool Enqueue(Guid id) => queue.Writer.TryWrite(id);
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         // A restart cannot silently replay a partly completed Facebook request.
@@ -37,10 +35,9 @@ public sealed class FacebookCrawlWorker(IServiceScopeFactory scopes, IDataProtec
         }
         await foreach (var id in queue.Reader.ReadAllAsync(stoppingToken))
         {
-            try { await Run(id, stoppingToken); }
+            try { if (await Cancelled(id)) continue; await Run(id, stoppingToken); }
             catch (OperationCanceledException) { await State(id, "paused", "Tác vụ đã dừng."); }
             catch (Exception ex) { log.LogWarning("Crawl {JobId} failed: {Type}", id, ex.GetType().Name); await State(id,"failed","Không hoàn tất thu thập; xem mã lỗi và số bài đã lưu.","CRAWL_FAILED"); }
-            finally { Interlocked.Exchange(ref busy, 0); }
         }
     }
     async Task State(Guid id,string status,string message,string? code=null,int? count=null,int? duplicates=null,CrawlEvaluationState? evaluation=null)
@@ -123,7 +120,7 @@ public sealed class FacebookCrawlWorker(IServiceScopeFactory scopes, IDataProtec
             else foreach(var item in raw.Split(';')){var pair=item.Trim().Split('=',2);if(pair.Length==2)cookies.Add(new(){Name=pair[0],Value=pair[1],Domain=".facebook.com",Path="/",Secure=true});}
             await using var context=await browser.NewContextAsync(new(){Locale="vi-VN",ViewportSize=new(){Width=1365,Height=900}});await context.AddCookiesAsync(cookies);
             var page=await context.NewPageAsync();
-            var targets=searchGroups ? await DiscoverGroups(page,job,id,accountId,count,dup,ct) : new List<JsonObject> { new() { ["url"]=target } };
+            var targets=searchGroups ? await DiscoverGroups(page,job,id,accountId,count,dup,ct) : job["sourceMode"]?.ToString()=="brand-links" ? job["sourceUrls"]!.AsArray().Select(u => new JsonObject { ["url"]=u!.ToString() }).ToList() : new List<JsonObject> { new() { ["url"]=target } };
             if(targets is null)return;
             var perAccount=0;
             foreach(var group in targets)

@@ -22,6 +22,7 @@ builder.Services.AddProjectSecurity();builder.Services.AddControllers().AddAppli
 var fake=new FixtureAiRunner();builder.Services.AddSingleton<AiRunner>(fake);
 builder.Services.AddSingleton<TimeProvider>(time);
 builder.Services.Configure<AiQueueOptions>(o=>{o.MaxJobs=3;o.WaitTimeoutSeconds=2;o.ResultTtlSeconds=10;});
+builder.Services.AddScoped<IContentService>(_=>new FixtureDraftService(fake));builder.Services.AddSingleton<DraftRewriteQueue>();
 builder.Services.AddSingleton<AiGatewayQueue>();builder.Services.AddHostedService(sp=>sp.GetRequiredService<AiGatewayQueue>());
 var app=builder.Build();app.UseProjectPipeline();app.MapControllers();await app.StartAsync();
 var address=app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
@@ -85,11 +86,48 @@ try
     var pending=Guid.NewGuid();q.Enqueue(pending,"evaluate","c",1,()=>Task.FromResult(new JsonObject()));
     var stopped=q.StopAsync(default);Check(q.Find(pending)?.Failure?.Code=="AI_GATEWAY_STOPPED","shutdown fails pending jobs without replay");blocker.SetResult();await stopped;
 
+    var drafts=app.Services.GetRequiredService<DraftRewriteQueue>();
+    var commonQueue=app.Services.GetRequiredService<AiGatewayQueue>();
+    using(var r=await anon.GetAsync("api/rewrite-jobs"))Check(r.StatusCode==HttpStatusCode.Unauthorized,"rewrite queue requires project login");
+    using(var r=await client.GetAsync("api/rewrite-jobs"))Check(r.StatusCode==HttpStatusCode.Unauthorized,"gateway key cannot authorize project rewrite queue");
+    var draftController=new RewriteJobsController(drafts);
+    Check(draftController.Submit(new(Guid.Empty,Guid.NewGuid(),"channel")) is Microsoft.AspNetCore.Mvc.BadRequestObjectResult,"invalid draft request rejected before enqueue");
+    var da=Guid.NewGuid();var db=Guid.NewGuid();var dc=Guid.NewGuid();var article=Guid.NewGuid();
+    Check(fake.TryAcquire(),"fixture holds common AI gate before draft submissions");
+    drafts.Submit(da,article,"draft-a");await Until(()=>Task.FromResult(commonQueue.Find(da)?.State=="running"));
+    drafts.Submit(db,article,"draft-b");drafts.Submit(dc,article,"cancelled-draft");
+    Check(commonQueue.Find(db)?.QueuePosition==1 && !fake.Calls.Contains("draft-a"),"drafts queue FIFO while Clef owns model gate");
+    drafts.Submit(db,article,"draft-b");Check(drafts.List().Length==3,"same draft request ID does not enqueue a second draft");
+    Check(!drafts.Cancel(da) && drafts.Cancel(dc),"draft cancellation only removes queued work without releasing running AI");
+    fake.Release();await Until(()=>Task.FromResult(commonQueue.Find(db)?.State=="completed"));
+    Check(fake.Calls.Where(c=>c is "draft-a" or "draft-b").SequenceEqual(new[]{"draft-a","draft-b"}) && !fake.Calls.Contains("cancelled-draft") && fake.MaxActive==1,"draft jobs run sequentially with one model and cancelled job never runs");
+    using(var r=await client.GetAsync($"bridge/jobs/{da}"))Check(r.StatusCode==HttpStatusCode.NotFound,"gateway job API cannot expose project draft result");
+    Check(commonQueue.Find(da)?.Result?["branch"]?.ToString()=="rewrite","completed rewrite job returns saved draft for review");
+    var invalid=Guid.NewGuid();var next=Guid.NewGuid();drafts.Submit(invalid,article,"invalid");drafts.Submit(next,article,"draft-after-error");
+    await Until(()=>Task.FromResult(commonQueue.Find(next)?.State=="completed"));
+    Check(commonQueue.Find(invalid)?.Failure?.Status==400 && commonQueue.Find(next)?.State=="completed","failed draft preserves error and does not stop queue");
+    Check(drafts.Find(afterLegacy.Id) is null,"rewrite queue cannot expose unrelated gateway jobs");
     await ClientChecks.Run(Check);
     Console.WriteLine($"AI queue checks passed: {checks}. Fake inference only; no database, Facebook or Ollama.");
 }
 finally{fake.ReleaseAll();await app.StopAsync();await app.DisposeAsync();}
 
+sealed class FixtureDraftService(FixtureAiRunner ai):IContentService
+{
+    public async Task<ServiceResult> CreateDraft(Guid id,JsonObject request)
+    {
+        var channel=request["channelId"]!.ToString();
+        if(channel=="invalid")return ServiceResult.BadRequest(new{error="Fixture invalid channel"});
+        await ai.AcquireAsync();
+        try{return ServiceResult.Ok(new JsonObject{["id"]=Guid.NewGuid().ToString(),["articleId"]=id.ToString(),["branch"]="rewrite",["content"]=await ai.Rewrite(new RewriteRequest(channel))});}
+        finally{ai.Release();}
+    }
+    public Task<ServiceResult> ReadVisualContext(Guid id)=>throw new NotSupportedException();
+    public Task<ServiceResult> SaveDraft(Guid id,JsonObject request)=>throw new NotSupportedException();
+    public Task<ServiceResult> ApproveDraft(Guid id,JsonObject request,string reviewer)=>throw new NotSupportedException();
+    public Task<ServiceResult> EvaluateArticle(Guid id)=>throw new NotSupportedException();
+    public Task<ServiceResult> Rewrite(RewriteRequest request)=>throw new NotSupportedException();
+}
 sealed class ManualClock:TimeProvider
 {
     DateTimeOffset now=DateTimeOffset.UtcNow;

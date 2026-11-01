@@ -172,3 +172,13 @@ Chọn tài khoản cào: tại Cào bài Facebook, đánh dấu tài khoản mu
 
 
 01/11/2026: gateway có hàng đợi AI chung, xem REMOTE-AI-QUEUE.md. Máy client cập nhật dùng job/polling để chờ qua Cloudflare; server giữ FIFO/one-model gate và giới hạn RAM, không lưu queue vào DB. Không tự chạy cào khi triển khai/kiểm tra tính năng này.
+
+## Link nguồn theo thương hiệu — 01/11/2026
+
+Hồ sơ thương hiệu có crawlSourceUrls: văn bản, mỗi dòng một link Page/nhóm HTTPS Facebook; tối đa 30 link/10.000 ký tự, bỏ dòng trống và link trùng. Không dùng kênh đăng làm nguồn ngầm. Cào bài có sourceMode=brand-links, hiển thị danh sách từ thương hiệu đã chọn; backend đọc lại brand hiện hành và snapshot sourceUrls vào task, không tin danh sách client. Worker duyệt các URL lần lượt trong cùng lượt, tổng maxPosts/accountPostLimit dùng chung toàn bộ nguồn, chống trùng và Clef giữ nguyên. Nguồn đầu có thể đủ toàn bộ chỉ tiêu; không bảo đảm chia đều bài giữa các nguồn. Thương hiệu cũ không có nguồn vẫn dùng URL/tìm nhóm như trước. Chỉ bấm Chạy mới cào, chọn thương hiệu/nguồn không thực thi. Không backfill/sửa dữ liệu thật khi thử.
+
+Hàng đợi cào local (01/11): StartCrawl không chặn khi worker bận; mỗi lần bấm Chạy hợp lệ tạo task pending, enqueue Channel single-reader và chạy FIFO, một lượt tại một thời điểm. Task đã hủy được bỏ qua trước mở trình duyệt. Đây là hàng đợi riêng từng backend trong RAM, không phải hàng đợi cào chung nhiều máy; restart vẫn paused, không tự replay. Không tạo lượt thật để test.
+
+## Hàng đợi rewrite — 01/11/2026
+
+Rewrite trong thư viện gửi POST /api/rewrite-jobs (UUID, articleId, channelId), trả202; UI poll danh sách mỗi3giây, mở bài khác được, hoàn tất mới có nút mở draft. DraftRewriteQueue dùng chung AiGatewayQueue FIFO, scope nghiệp vụ riêng từng job, chỉ giữ ID/kênh lúc chờ; tạo draft bằng ContentService thật, không đăng bài. Request cùng UUID và payload không nhân đôi; queued có thể hủy, running không nhả gate sớm. Cookie login và CSRF bắt buộc, Bearer gateway không cấp quyền API dự án. CreateDraft/EvaluateArticle/Rewrite tương thích cũ chờ AiRunner gate thay vì409 khi bận; giữ gate tới unload. Queue trong RAM, tối đa theo AiQueue (mặc định8), chờ15phút/kết quả10phút, restart không replay. Draft đã lưu vẫn trong DB; kiểm tra Bản nháp trước gửi lại sau lỗi mạng/restart. Chỉ một model qua gateway, không độc quyền chương trình khác gọi Ollama trực tiếp. Không tự cào/đăng hoặc dùng dữ liệu thật để test.

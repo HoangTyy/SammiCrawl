@@ -5,7 +5,7 @@ namespace SammiCrawl.Backend.Services;
 
 public static class BrandPolicy
 {
-    public static readonly string[] Fields = ["allowedTopics", "forbiddenContent", "verifyInformation", "requireMediaRights", "requireSponsorLabel", "channels"];
+    public static readonly string[] Fields = ["crawlSourceUrls", "allowedTopics", "forbiddenContent", "verifyInformation", "requireMediaRights", "requireSponsorLabel", "channels"];
     public static bool FacebookUrl(string? text, string? type = null) => Uri.TryCreate(text, UriKind.Absolute, out var uri)
         && uri.Scheme == "https" && (uri.Host == "facebook.com" || uri.Host.EndsWith(".facebook.com", StringComparison.OrdinalIgnoreCase))
         && uri.AbsolutePath != "/" && (type != "group" || uri.AbsolutePath.StartsWith("/groups/"))
@@ -20,8 +20,23 @@ public static class BrandPolicy
         var url = profile["facebookGroupUrl"]?.ToString();
         return FacebookUrl(url, "group") ? new JsonArray(new JsonObject { ["id"] = "legacy-group", ["name"] = "Nhóm Facebook", ["type"] = "group", ["url"] = url, ["dailyTarget"] = 0, ["minWords"] = 80, ["maxWords"] = 250, ["active"] = true, ["requireBranding"] = false }) : new JsonArray();
     }
+    public static string[] CrawlSources(string? text) => (text ?? "").Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+    public static string? ValidateCrawlSources(JsonNode? value, bool required = false)
+    {
+        if (value is null) return required ? "Thương hiệu chưa có link nguồn cào. Thêm trong hồ sơ thương hiệu." : null;
+        if (value is not JsonValue v || !v.TryGetValue<string>(out var text) || text.Length > 10000) return "Link nguồn phải là văn bản tối đa 10.000 ký tự.";
+        var urls = CrawlSources(text);
+        if (required && urls.Length == 0) return "Thương hiệu chưa có link nguồn cào. Thêm trong hồ sơ thương hiệu.";
+        if (urls.Length > 30) return "Mỗi thương hiệu có tối đa 30 link nguồn cào.";
+        foreach (var url in urls)
+            if (!FacebookUrl(url) || FacebookPostUrl(url) || !Uri.TryCreate(url, UriKind.Absolute, out var u) || u.UserInfo.Length > 0 || u.Port != 443 || u.AbsolutePath.StartsWith("/search", StringComparison.OrdinalIgnoreCase))
+                return "Mỗi dòng cần là link Page hoặc nhóm Facebook HTTPS; không dùng link bài viết, tìm kiếm hay cổng tùy chỉnh.";
+        return null;
+    }
     public static string? Validate(JsonObject profile)
     {
+        if (ValidateCrawlSources(profile["crawlSourceUrls"]) is string sourceError) return sourceError;
+        if (profile.ContainsKey("crawlSourceUrls")) profile["crawlSourceUrls"] = string.Join("\n", CrawlSources(profile["crawlSourceUrls"]?.ToString()));
         foreach (var field in new[] { "allowedTopics", "forbiddenContent" })
             if (profile[field] is not null && (profile[field] is not JsonValue value || !value.TryGetValue<string>(out var text) || text.Length > 10000)) return $"{field} phải là văn bản tối đa 10.000 ký tự.";
         foreach (var field in new[] { "verifyInformation", "requireMediaRights", "requireSponsorLabel" })

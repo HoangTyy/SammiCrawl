@@ -4,6 +4,7 @@ import type { Brand, BrandChannel } from '../brandPolicy';
 
 const fields = [
   ['name', 'Tên thương hiệu'], ['description', 'Mô tả và sứ mệnh'], ['language', 'Ngôn ngữ'],
+  ['crawlSourceUrls', 'Link nguồn để cào (mỗi dòng một link Page/nhóm, tối đa 30)'],
   ['audience', 'Đối tượng mục tiêu'], ['tone', 'Giọng điệu'], ['writingStyle', 'Cấu trúc / phong cách viết'],
   ['allowedTopics', 'Chủ đề được phép (mỗi dòng một chủ đề)'], ['forbiddenContent', 'Nội dung không được đăng'],
   ['callToAction', 'Kêu gọi hành động (CTA)'], ['requiredKeywords', 'Từ khóa bắt buộc'], ['forbiddenKeywords', 'Từ khóa cấm'], ['rules', 'Quy tắc bổ sung'],

@@ -75,7 +75,7 @@ public sealed class ContentService(IProjectRepository db, AiRunner ai, IWebHostE
         {
             try { rewriteImages = await ReadSourceImages(article); }
             catch (InvalidOperationException ex) { return ServiceResult.Conflict(new { error = ex.Message }); }
-            if (!ai.TryAcquire()) return ServiceResult.Conflict(new { error = "AI đang bận. Chỉ chạy một model mỗi lần." });
+            await ai.AcquireAsync();
             try
             {
                 var instructions = BrandPolicy.Instructions(profile, channel) + "\n" + RewritePrompts.ImageContext;
@@ -177,7 +177,7 @@ public sealed class ContentService(IProjectRepository db, AiRunner ai, IWebHostE
         if (profile is null || profile["deletedAt"] is not null) return ServiceResult.BadRequest(new { error = "Thương hiệu không còn hoạt động." });
         var source = article["content"]?.ToString();
         if (string.IsNullOrWhiteSpace(source) || source.Length > 20000) return ServiceResult.BadRequest(new { error = "Nội dung cần từ 1 đến 20.000 ký tự." });
-        if (!ai.TryAcquire()) return ServiceResult.Conflict(new { error = "AI đang bận. Chỉ chạy một model mỗi lần." });
+        await ai.AcquireAsync();
         try
         {
             var images = new List<string>(); var warnings = (article["mediaWarnings"] as JsonArray ?? new JsonArray()).Select(n => n!.ToString()).ToList();
@@ -262,7 +262,7 @@ public sealed class ContentService(IProjectRepository db, AiRunner ai, IWebHostE
     {
         if (string.IsNullOrWhiteSpace(r.Text) || r.Text.Length > 20000 || r.Instructions.Length > 10000) return ServiceResult.BadRequest(new { error = "Nội dung cần từ 1 đến 20.000 ký tự; chỉ dẫn tối đa 10.000 ký tự." });
         if (AiImages.Validate(r.Images) is string imageError) return ServiceResult.BadRequest(new { error = imageError });
-        if (!ai.TryAcquire()) return ServiceResult.Conflict(new { error = "AI đang xử lý tác vụ khác. Chỉ một model được chạy mỗi lần." });
+        await ai.AcquireAsync();
         try
         {
             var text = await ai.Rewrite(r);

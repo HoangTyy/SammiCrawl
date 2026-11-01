@@ -17,7 +17,7 @@ builder.WebHost.UseUrls("http://127.0.0.1:0");
 var gateway = builder.Build();
 var calls = new List<JsonObject>();
 var answer = "Trường mình ơi, chiếc thẻ sinh viên này khiến ai cũng phải bật cười!";
-gateway.MapGet("/bridge/health", () => Results.Json(new { online = true, models = new[] { "bonsai-2:27b" } }));
+gateway.MapGet("/bridge/health", () => Results.Json(new { online = true, busy = true, models = new[] { "bonsai-2:27b", "clef-flash:latest" } }));
 gateway.MapPost("/bridge/rewrite", (JsonObject body) => { calls.Add(body.DeepClone().AsObject()); return Results.Json(new { text = answer }); });
 await gateway.StartAsync();
 var url = gateway.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
@@ -45,6 +45,27 @@ void Check(bool ok, string label) { if (!ok) throw new Exception("FAIL: " + labe
 JsonObject Request(string branch = "rewrite") => new() { ["branch"] = branch, ["channelId"] = "fixture-channel" };
 try
 {
+    Check(BrandPolicy.Validate(new JsonObject { ["crawlSourceUrls"]="https://www.facebook.com/groups/123/\nhttps://www.facebook.com/stuxpage" }) is null, "brand accepts multiple Page and group crawl sources");
+    Check(BrandPolicy.CrawlSources(" https://www.facebook.com/stuxpage \n\nhttps://www.facebook.com/stuxpage").Length == 1, "crawl sources trim blank lines and deduplicate");
+    Check(BrandPolicy.ValidateCrawlSources(null) is null && BrandPolicy.ValidateCrawlSources(null,true) is not null, "old brands remain valid but source mode requires configured links");
+    foreach (var invalid in new[] { "http://facebook.com/stux", "https://facebook.com.evil.test/stux", "https://facebook.com/groups/1/posts/2/", "https://facebook.com/search/groups/?q=test", "https://user:secret@facebook.com/stux", "https://facebook.com:8443/stux" })
+        Check(BrandPolicy.ValidateCrawlSources(JsonValue.Create(invalid)) is not null, "invalid source rejected: " + new Uri(invalid).Host);
+    Check(BrandPolicy.ValidateCrawlSources(JsonValue.Create(string.Join("\n",Enumerable.Range(1,31).Select(i=>"https://facebook.com/page"+i)))) is not null, "brand source count bounded at30");
+
+    var crawlAccountId = Guid.NewGuid();
+    repo.Rows.Add(new Document { Id=crawlAccountId, Kind="accounts", ProtectedSecret="fixture-unused-session", Json="{\"role\":\"crawl\",\"enabled\":true,\"facebookStatus\":\"active\"}" });
+    var brandRow = repo.Rows.Single(r=>r.Id==brandId);
+    var brandData=JsonNode.Parse(brandRow.Json)!.AsObject();
+    brandData["crawlSourceUrls"]="https://www.facebook.com/groups/123/\nhttps://www.facebook.com/stuxpage"; brandRow.Json=brandData.ToJsonString();
+    using var worker = new FacebookCrawlWorker(gateway.Services.GetRequiredService<IServiceScopeFactory>(), new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider(), builder.Environment, NullLogger<FacebookCrawlWorker>.Instance);
+    var workflows = new WorkflowsService(repo, ai, worker);
+    JsonObject CrawlConfig() => new() { ["brandId"]=brandId.ToString(),["sourceMode"]="brand-links",["sourceUrls"]=new JsonArray("https://facebook.com/ignored-client-url"),["crawlAccountIds"]=new JsonArray(crawlAccountId.ToString()),["maxPosts"]=10,["maxScrolls"]=10,["delayMinMs"]=1500,["delayMaxMs"]=4000,["minLikes"]=0,["minComments"]=0,["accountPostLimit"]=100,["accountRestMinMs"]=30000,["accountRestMaxMs"]=50000 };
+    var firstCrawl=await workflows.StartCrawl(JsonNode.Parse(CrawlConfig().ToJsonString())!.AsObject());
+    var secondCrawl=await workflows.StartCrawl(JsonNode.Parse(CrawlConfig().ToJsonString())!.AsObject());
+    Check(firstCrawl.Status==200 && secondCrawl.Status==200 && repo.Rows.Count(r=>r.Kind=="tasks")==2, "multiple crawl submissions queue even while AI busy without starting worker");
+    var taskSnapshot=JsonNode.Parse(repo.Rows.First(r=>r.Kind=="tasks").Json)!;
+    Check(taskSnapshot["sourceUrls"]!.AsArray().Count==2 && taskSnapshot["sourceUrls"]![0]!.ToString()=="https://www.facebook.com/groups/123/" && !taskSnapshot.ToJsonString().Contains("ignored-client-url"), "crawl snapshots brand sources in order instead of trusting client URLs");
+    Check(taskSnapshot["status"]!.ToString()=="pending", "crawl submission persists pending state for UI queue");
     var result = await service.CreateDraft(articleId, Request());
     Check(result.Status == 200 && calls.Count == 1, "image article creates draft with one rewrite call and no OCR confirmation");
     var payload = calls.Single(); var draft = (JsonObject)result.Value!;
