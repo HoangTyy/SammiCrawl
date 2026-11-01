@@ -128,7 +128,7 @@ Giới hạn tác vụ cào: mỗi tài khoản chỉ được dùng một lư�
 
 ## Cào và đánh giá Clef — 28/10/2026
 
-Worker đánh giá Clef tuần tự ngay sau mỗi bài mới được lưu, trước khi xử lý bài tiếp theo. StartCrawl kiểm tra AI online/có clef-flash:latest/không busy trước khi tạo task (không suy luận và không chứng minh endpoint systemone hoạt động). Giữ singleton gate, không chạy song song model. Nếu đánh giá lỗi/busy/kết quả không hợp lệ, dừng lượt ở paused/CLEF_EVALUATION_INCOMPLETE, giữ bài pending để đánh giá thủ công, không tự retry Facebook hoặc đổi model.
+Worker đánh giá Clef tuần tự ngay sau mỗi bài mới được lưu, trước khi xử lý bài tiếp theo. StartCrawl kiểm tra AI online/có clef-flash:latest trước khi tạo task; busy chỉ chặn khi không có hỗ trợ queue ở remote gateway (không suy luận và không chứng minh endpoint systemone hoạt động). Giữ singleton gate, không chạy song song model. Nếu đánh giá lỗi/busy/kết quả không hợp lệ, dừng lượt ở paused/CLEF_EVALUATION_INCOMPLETE, giữ bài pending để đánh giá thủ công, không tự retry Facebook hoặc đổi model.
 
 Task chỉ completed/100% khi đủ số bài thu thập và tất cả có kết quả Clef hợp lệ; running tối đa99%, đủ bài chưa đánh giá là90%. maxPosts và accountPostLimit vẫn tính bài mới thu thập, kể cả bài sau đó bị loại; không tự cào bù số bài không phù hợp. Task lưu clefEvaluatedPosts/clefRecommendedPosts/clefReviewPosts/clefRejectedPosts. Queue hiển thị thống kê và lý do dừng.
 
@@ -169,3 +169,6 @@ Giờ nguồn lưu sourcePublishedAt UTC chỉ từ data-utime hoặc ISO dateti
 Kiểm tra độc lập tests/FacebookMetadataChecks dùng Chromium thật với HTML fixture và code mapper production, chặn toàn bộ mạng; không đọc DB/phiên Facebook/Ollama. Chưa chạy thử Facebook thật trong lượt bổ sung; fixture pass không bảo đảm mọi layout Facebook đều đọc được.
 
 Chọn tài khoản cào: tại Cào bài Facebook, đánh dấu tài khoản muốn dùng trước khi chạy. Có Chọn tất cả/Bỏ chọn; giữ lựa chọn trên trình duyệt và trong mẫu. Không chọn tài khoản thì không thể chạy. Nếu mẫu cũ có ID tài khoản đã xóa/ngưng/hết phiên, bỏ lựa chọn không hợp lệ rồi chọn lại. API /api/crawl/start yêu cầu crawlAccountIds là danh sách UUID không rỗng, chỉ nhận tài khoản cào đang bật/active có phiên; không tự dùng toàn bộ tài khoản khi thiếu trường. Tổng bài bị giới hạn theo số tài khoản thực được chọn. Chưa có khóa tài khoản phân tán giữa nhiều máy.
+
+
+01/11/2026: gateway có hàng đợi AI chung, xem REMOTE-AI-QUEUE.md. Máy client cập nhật dùng job/polling để chờ qua Cloudflare; server giữ FIFO/one-model gate và giới hạn RAM, không lưu queue vào DB. Không tự chạy cào khi triển khai/kiểm tra tính năng này.

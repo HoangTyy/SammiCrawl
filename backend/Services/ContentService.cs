@@ -47,6 +47,7 @@ public sealed class ContentService(IProjectRepository db, AiRunner ai, IWebHostE
             return ServiceResult.Ok(new{context,imageCount=images.Count,imageFingerprint=VisualFingerprint(article["content"]?.ToString()??"",images)});
         }
         catch(AiModelUnavailableException ex){return ServiceResult.Json(new{error=ex.Message,code="AI_MODEL_UNAVAILABLE"},statusCode:503);}
+        catch(AiGatewayException ex){return ServiceResult.Json(new{error=ex.Message,code=ex.Code},statusCode:ex.Status);}
         catch(Exception ex){logger.LogError(ex,"Image transcription failed");return ServiceResult.Json(new{error="AI chưa hoàn tất đọc ảnh. Kiểm tra kết nối/model trên máy AI rồi thử lại; chưa tạo bản rewrite."},statusCode:502);}
         finally{ai.Release();}
     }
@@ -83,6 +84,7 @@ public sealed class ContentService(IProjectRepository db, AiRunner ai, IWebHostE
             }
             catch (UnchangedRewriteException ex) { return ServiceResult.Json(new { error = ex.Message }, statusCode: 422); }
             catch (AiModelUnavailableException ex) { return ServiceResult.Json(new { error = ex.Message, code = "AI_MODEL_UNAVAILABLE" }, statusCode: 503); }
+            catch (AiGatewayException ex) { return ServiceResult.Json(new { error=ex.Message, code=ex.Code }, statusCode:ex.Status); }
             catch (Exception ex) { logger.LogError(ex, "Article rewrite failed"); return ServiceResult.Json(new { error = "Bonsai chưa hoàn thành bài viết. Kiểm tra Ollama." }, statusCode: 502); }
             finally { ai.Release(); }
         }

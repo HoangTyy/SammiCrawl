@@ -43,6 +43,7 @@ public static class SecurityServiceExtensions
             {
                 PermitLimit = 10, Window = TimeSpan.FromMinutes(1), QueueLimit = 0, AutoReplenishment = true
             }));
+            options.AddFixedWindowLimiter("remote-ai-poll", o => { o.PermitLimit = 600; o.Window = TimeSpan.FromMinutes(1); o.QueueLimit = 0; });
             options.AddFixedWindowLimiter("remote-ai", o => { o.PermitLimit = 30; o.Window = TimeSpan.FromMinutes(1); o.QueueLimit = 0; });
         });
         return services;

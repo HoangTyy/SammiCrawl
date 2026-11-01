@@ -1,6 +1,6 @@
 # Dùng AI trên máy chủ SammiCrawl
 
-Máy chủ chạy Ollama và SammiCrawl. Máy client chỉ cần backend SammiCrawl; không cần tải model. Cả Clef và Bonsai dùng API gateway, chung khóa một yêu cầu/model tại một thời điểm. Khi bận trả HTTP 409 với Retry-After, không tự xếp hàng. Không bảo đảm độc quyền với chương trình khác gọi Ollama trực tiếp.
+Máy chủ chạy Ollama và SammiCrawl. Máy client chỉ cần backend SammiCrawl; không cần tải model. Cả Clef và Bonsai dùng API gateway, chung khóa một yêu cầu/model tại một thời điểm. Gateway có FIFO chung trong một process. Client mới submit job/poll kết quả; API cũ cũng xếp hàng nhưng có thể timeout HTTP khi chờ lâu. Đọc REMOTE-AI-QUEUE.md. Không bảo đảm độc quyền với chương trình khác gọi Ollama trực tiếp.
 
 ## Máy chủ AI
 
@@ -31,7 +31,7 @@ Tất cả endpoint cần header `Authorization: Bearer <secret>`, trả Cache-C
 - GET /bridge/health: trạng thái AI và danh sách model, không trả thông tin DB.
 - POST /bridge/rewrite: JSON {"text":"Nội dung gốc", "tone":"thân thiện", "instructions":"Giữ nguyên thông tin", "temperature":0.7}; kết quả {"text":"..."}.
 - POST /bridge/evaluate: JSON {"text":"Nội dung", "profile":{"name":"Thương hiệu", "description":"Chủ đề"}, "images":[]}; ảnh là base64 JPEG/PNG/WebP, tối đa 4 ảnh, mỗi ảnh 5 MB. Kết quả gồm status, score, reason, topic, warnings, decision.
-- 401: thiếu/sai key; 400: dữ liệu không hợp lệ; 409: AI bận; 429: quá 30 request/phút; 502: model lỗi; 503: gateway bị cấu hình trỏ sang gateway khác.
+- 401: thiếu/sai key; 400: dữ liệu không hợp lệ; 409: mã job xung đột/không thể hủy job đang chạy; 429: hàng đợi đầy hoặc rate limit; 502: model lỗi; 503: gateway bị cấu hình trỏ sang gateway khác.
 
 Gateway không lưu nội dung gọi trực tiếp vào DB. Các thao tác qua workflow client vẫn lưu kết quả ở DB của client. Đổi key: cập nhật REMOTE_AI_KEY trên máy chủ, recreate app, cấp key mới cho client. Key cũ hết hiệu lực sau khi recreate. Chỉ một replica gateway để khóa model có hiệu lực toàn bộ request.
 
@@ -50,3 +50,6 @@ Client chỉ thử lại tối đa một lần (nghỉ2giây) với POST bridge/
 Gateway mới trả mã lỗi phân biệt CLEF_INVALID_OUTPUT, AI_UPSTREAM_FAILED, AI_TIMEOUT và log code/type/trace, không log payload/cookie/key. Client hiển thị mã/lý do an toàn thay vì che mọi lỗi bằng một câu chung. Cần pull và build/recreate app trên cả máy client lẫn máy chủ AI; máy AI phải giữ RemoteAi:BaseUrl trống để không gọi vòng. Giữ .env và volume khóa/media trên mỗi máy; file env thiếu dấu chấm được ignore, Compose vẫn cần .env.
 
 Đánh giá lại hết các bài của tác vụ dừng vì Clef: nếu đã đủ mục tiêu thì completed; nếu mới thu thập4/10 thì vẫn paused/COLLECTION_INCOMPLETE, báo còn thiếu bài thu thập thay vì ghi Clef còn0bài chờ. Không tự resume Facebook.
+
+
+Cập nhật 01/11/2026: xem `REMOTE-AI-QUEUE.md` về endpoint job, giới hạn bộ nhớ, TTL, polling và hàng đợi volatile. Quy tắc retry evaluate cũ trong tài liệu này chỉ còn áp dụng khi fallback gateway chưa có /bridge/jobs. Client mới không tự replay POST job đã nhận/không rõ kết quả. Cập nhật gateway trước, rồi pull/build các máy client; giữ RemoteAi:BaseUrl trống trên máy AI.

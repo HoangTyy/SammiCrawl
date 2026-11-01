@@ -113,7 +113,7 @@ Xem Controllers để biết method/body/auth chính xác:
 
 ## AI từ máy khác
 
-Đọc REMOTE-AI.md. AiBridgeController chỉ cho Bearer RemoteAiKey, port 8081 (host 5081) chặn mọi đường dẫn ngoài bridge. AiRunner tự dùng gateway khi RemoteAi:BaseUrl có giá trị; máy chủ AI phải để trống để tránh gọi vòng. Gateway và workflow local chung singleton gate; busy trả 409, không có hàng đợi chờ AI. Không commit .env hoặc config/*.local.env.
+Đọc REMOTE-AI.md. AiBridgeController chỉ cho Bearer RemoteAiKey, port 8081 (host 5081) chặn mọi đường dẫn ngoài bridge. AiRunner tự dùng gateway khi RemoteAi:BaseUrl có giá trị; máy chủ AI phải để trống để tránh gọi vòng. Gateway dùng AiGatewayQueue FIFO và chung singleton gate với AI local; xem REMOTE-AI-QUEUE.md. AI local gọi trực tiếp vẫn có thể trả409 khi gate bận. Không commit .env hoặc config/*.local.env.
 
 Rewrite Facebook: AiRunner hướng dẫn văn bản thuần và FacebookPlainText.Clean loại Markdown trước khi trả/lưu, cả gateway và local. DataVaultView hiển thị phần trăm ước tính tối đa 90% khi chờ; chỉ 100% khi CreateDraft trả thành công. Chưa có tiến độ token thực từ Ollama. Không âm thầm sửa draft cũ.
 
@@ -214,3 +214,8 @@ Kiểm tra độc lập tests/FacebookMetadataChecks dùng Chromium thật với
 ## Chọn tài khoản cào — 01/11/2026
 
 CrawlerStudioView cho chọn rõ crawlAccountIds, không tự chọn tất cả. Chỉ tài khoản role=crawl, enabled và facebookStatus=active được chọn để chạy; lựa chọn hết điều kiện phải bỏ/chọn lại. localStorage/mẫu lưu danh sách ID; mẫu cũ thiếu danh sách không tự fallback tất cả. Capacity tính theo tài khoản đủ điều kiện đã chọn. StartCrawl kiểm tra lại ID/điều kiện và phiên chỉ trên lựa chọn đó; không âm thầm thay tài khoản khác. CrawlAccountSelection.Validate dùng chung logic parse/dedup/kiểm tra eligible và có fixture kiểm tra. Tính năng này chưa bổ sung ownership/lease hoặc khóa account giữa nhiều backend; không coi lựa chọn account là giải pháp đồng thời nhiều máy.
+
+
+## Hàng đợi gateway — 01/11/2026
+
+Đọc REMOTE-AI-QUEUE.md. AiJobsController có submit202/poll/cancel-queued; AiGatewayQueue single reader, giới hạn job/payload/TTL trong RAM. Tất cả endpoint bridge inference (cả đường cũ) vào queue, action giữ AiRunner gate qua inference và unload. Không release sớm khi hủy job running; không tự replay khi gateway restart. AiQueuedClient chỉ submit một lần, mất phản hồi thì poll UUID; không retry POST jobs. Fallback gateway cũ404 dùng AiGatewayClient với quy tắc cũ. Health có queueEnabled/version/counters; StartCrawl không chặn busy từ remote gateway có queueEnabled nhưng vẫn kiểm online/model. Poll có rate policy riêng để không tiêu hết quota submit. Giữ auth/no-store/port boundary và validation trước enqueue. Không log payload/key, không public Ollama. Chưa có crawl ownership/khóa account phân tán. Test tests/AiQueueChecks không gọi AI/FB/DB thật; triển khai gateway rồi client để tránh HTTP timeout đường legacy.

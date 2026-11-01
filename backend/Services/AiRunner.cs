@@ -21,11 +21,12 @@ public class AiRunner
             remote.DefaultRequestHeaders.Authorization=new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer",key);
         }
     }
-    Task<JsonObject> RemotePost(string path,object payload) => AiGatewayClient.PostAsync(remote!,path,payload);
+    Task<JsonObject> RemotePost(string path,object payload) => AiQueuedClient.PostAsync(remote!,path,payload);
     public bool TryAcquire() => gate.Wait(0);
+    public Task AcquireAsync(CancellationToken cancellationToken = default) => gate.WaitAsync(cancellationToken);
     public void Release() => gate.Release();
-    public async Task<object> Status() { try { if(remote is not null){using var r=await remote.GetAsync("bridge/health");r.EnsureSuccessStatusCode();return JsonNode.Parse(await r.Content.ReadAsStringAsync())!;} var response = await http.GetAsync("/api/tags"); response.EnsureSuccessStatusCode(); var tags = JsonNode.Parse(await response.Content.ReadAsStringAsync()); return new { online = true, busy = gate.CurrentCount == 0, models = tags?["models"]?.AsArray().Select(m => m?["name"]?.ToString()).ToArray() }; } catch { return new { online = false, busy = gate.CurrentCount == 0, models = Array.Empty<string>() }; } }
-    public async Task<string> Rewrite(RewriteRequest r)
+    public virtual async Task<object> Status() { try { if(remote is not null){using var r=await remote.GetAsync("bridge/health");r.EnsureSuccessStatusCode();return JsonNode.Parse(await r.Content.ReadAsStringAsync())!;} var response = await http.GetAsync("/api/tags"); response.EnsureSuccessStatusCode(); var tags = JsonNode.Parse(await response.Content.ReadAsStringAsync()); return new { online = true, busy = gate.CurrentCount == 0, models = tags?["models"]?.AsArray().Select(m => m?["name"]?.ToString()).ToArray() }; } catch { return new { online = false, busy = gate.CurrentCount == 0, models = Array.Empty<string>() }; } }
+    public virtual async Task<string> Rewrite(RewriteRequest r)
     {
         if (AiImages.Validate(r.Images) is string imageError) throw new InvalidOperationException(imageError);
         if (AiModelUnavailableException.CheckBonsai(System.Text.Json.JsonSerializer.SerializeToNode(await Status())) is string unavailable)
@@ -65,7 +66,7 @@ public class AiRunner
         }
         finally { using var unload = await http.PostAsJsonAsync("/api/generate", new { model, keep_alive = 0 }); unload.EnsureSuccessStatusCode(); }
     }
-    public async Task<JsonObject> Evaluate(string text, JsonNode profile, List<string> images)
+    public virtual async Task<JsonObject> Evaluate(string text, JsonNode profile, List<string> images)
     {
         if(remote is not null)return await RemotePost("bridge/evaluate",new{text,profile,images});
         const string model = "clef-flash:latest";

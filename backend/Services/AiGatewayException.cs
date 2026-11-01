@@ -11,6 +11,11 @@ public sealed class AiGatewayException(string code, string message, int status =
 
     public static AiGatewayException FromResponse(int status, string? code) => code switch
     {
+        "AI_QUEUE_FULL" => new(code, "Hàng đợi AI đã đầy. Chờ bớt tác vụ rồi gửi lại.", 429),
+        "AI_QUEUE_WAIT_TIMEOUT" => new(code, "Yêu cầu hết thời gian chờ và chưa chạy AI. Gửi lại khi gateway bớt tải.", 504),
+        "AI_GATEWAY_STOPPED" or "AI_JOB_NOT_FOUND" => new(code, "Gateway dừng, khởi động lại hoặc kết quả hết hạn. Không tự gửi lại yêu cầu.", 503),
+        "AI_JOB_CANCELLED" => new(code, "Đã bỏ yêu cầu AI đang chờ.", 409),
+        "AI_JOB_CONFLICT" => new(code, "Mã tác vụ AI đã dùng cho nội dung khác.", 409),
         "CLEF_INVALID_OUTPUT" => InvalidOutput(),
         "AI_MODEL_UNAVAILABLE" => new(code, "Máy chủ AI thiếu model hoặc chưa sẵn sàng.", 503),
         "AI_UNLOAD_FAILED" => new(code, "Máy chủ AI chưa giải phóng được model. Kiểm tra gateway.", 502),

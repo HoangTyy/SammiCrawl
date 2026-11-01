@@ -29,7 +29,9 @@ public static class RequestPipelineExtensions
         {
             if (ctx.Request.Path.StartsWithSegments("/bridge"))
             {
-                if (ctx.Request.Path.Value is not ("/bridge/health" or "/bridge/rewrite" or "/bridge/evaluate")) { ctx.Response.StatusCode = 404; return; }
+                var path = ctx.Request.Path.Value ?? "";
+                var jobPath = path == "/bridge/jobs" || (path.StartsWith("/bridge/jobs/", StringComparison.Ordinal) && Guid.TryParseExact(path["/bridge/jobs/".Length..], "D", out _));
+                if (!jobPath && path is not ("/bridge/health" or "/bridge/rewrite" or "/bridge/evaluate")) { ctx.Response.StatusCode = 404; return; }
                 ctx.Response.Headers.CacheControl = "no-store";
                 var expected = app.Configuration["RemoteAiKey"];
                 var supplied = ctx.Request.Headers.Authorization.ToString();

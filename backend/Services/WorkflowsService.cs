@@ -62,7 +62,7 @@ public sealed class WorkflowsService(IProjectRepository db, AiRunner ai, Faceboo
         var aiStatus = JsonSerializer.SerializeToNode(await ai.Status());
         if (CrawlEvaluationState.ReadinessError(aiStatus) is string aiError)
             return ServiceResult.Json(new { error = aiError, code = "CLEF_UNAVAILABLE" }, statusCode: 503);
-        if (aiStatus?["busy"]?.GetValue<bool>() == true)
+        if (aiStatus?["busy"]?.GetValue<bool>() == true && aiStatus?["queueEnabled"]?.GetValue<bool>() != true)
             return ServiceResult.Conflict(new { error = "AI đang bận. Chờ tác vụ AI hiện tại xong trước khi cào và đánh giá." });
         var id=Guid.NewGuid();config["id"]=id.ToString();config["targetName"]=JsonNode.Parse(brand.Json)?["name"]?.ToString()??brandId.ToString();config["createdAt"]=DateTimeOffset.UtcNow.ToString("O");config["status"]="pending";config["progress"]=0;config["crawledPosts"]=0;config["workerNode"]="Facebook local";config["ipAddress"]="—";config["latencyMs"]=0;
         var task=new Document{Id=id,Kind="tasks",Json=config.ToJsonString()};db.AddDocument(task);await db.SaveChangesAsync();
