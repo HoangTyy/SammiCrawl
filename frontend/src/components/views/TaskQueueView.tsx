@@ -190,8 +190,8 @@ export const TaskQueueView: React.FC<TaskQueueViewProps> = ({
                           ></div>
                         </div>
                         <span className="progress-num">{task.crawledPosts}/{task.maxPosts} bài thu thập ({task.progress}%)</span>
-                        <small>{task.autoEvaluate === false ? 'Chỉ thu thập · kiểm tra trùng' : task.clefEvaluatedPosts === undefined ? 'Chưa có thống kê Clef' : `Clef: ${task.clefEvaluatedPosts}/${task.crawledPosts}`}</small>
-                        {task.autoEvaluate !== false && task.clefEvaluatedPosts !== undefined && <small>Phù hợp {task.clefRecommendedPosts ?? 0} · Xem lại {task.clefReviewPosts ?? 0} · Loại {task.clefRejectedPosts ?? 0}</small>}
+                        <small>{task.clefEvaluatedPosts === undefined ? 'Chưa có thống kê Clef' : `Clef: ${task.clefEvaluatedPosts}/${task.crawledPosts}`}</small>
+                        {task.clefEvaluatedPosts !== undefined && <small>Phù hợp {task.clefRecommendedPosts ?? 0} · Xem lại {task.clefReviewPosts ?? 0} · Loại {task.clefRejectedPosts ?? 0}</small>}
                       </div>
                     </td>
                     <td data-label="Bài thu được">

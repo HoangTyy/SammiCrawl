@@ -254,7 +254,7 @@ public sealed class ContentService(IProjectRepository db, AiRunner ai, IWebHostE
                 ? "Đã thu thập đủ bài và hoàn tất đánh giá Clef sau khi đánh giá lại. Không đăng Facebook."
                 : $"Clef đã đánh giá {evaluation.Evaluated}/{captured} bài đã thu thập; còn thiếu {target-captured} bài thu thập. Tạo lượt cào mới để tiếp tục; không tự chạy lại Facebook.";
         }
-        task["progress"] = CrawlEvaluationState.Progress(task["status"]?.ToString() ?? "paused", captured, target, evaluation.Evaluated, task["autoEvaluate"]?.GetValue<bool>() != false);
+        task["progress"] = CrawlEvaluationState.Progress(task["status"]?.ToString() ?? "paused", captured, target, evaluation.Evaluated);
         taskDoc.Json = task.ToJsonString();
     }
 

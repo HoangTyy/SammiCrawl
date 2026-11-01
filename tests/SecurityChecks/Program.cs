@@ -111,10 +111,6 @@ try
     Check(evaluated.Record(ServiceResult.Ok(rejected)) && evaluated.Rejected==1, "rejected result counts as evaluated without counting recommended");
     var review = Assessed("review"); CrawlEvaluationState.ExcludeRejected(review);
     Check(review["deletedAt"] is null && evaluated.Record(ServiceResult.Ok(review)) && evaluated.Review==1, "uncertain/media-review article remains for human review");
-    Check(CrawlEvaluationState.Progress("running",5,10,0,false)==50, "collection-only progress ignores Clef");
-    Check(CrawlEvaluationState.Progress("completed",10,10,0,false)==100, "collection-only completes without AI assessment");
-    Check(CrawlEvaluationState.Progress("paused",2,10,0,false)==20, "collection-only exhausted source retains actual progress");
-    Check(!CrawlEvaluationState.RepairIncompleteCompletion(new System.Text.Json.Nodes.JsonObject { ["autoEvaluate"]=false,["status"]="completed" }, new[]{new System.Text.Json.Nodes.JsonObject()}), "collection-only completion never repaired to Clef paused");
     Check(CrawlEvaluationState.Progress("running",10,10,0)==90, "full capture without Clef stays90 percent");
     Check(CrawlEvaluationState.Progress("running",10,10,10)==99, "running stays below100 even after last assessment");
     Check(CrawlEvaluationState.Progress("completed",10,10,9)<100, "incomplete Clef cannot reach100 percent");
