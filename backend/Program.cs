@@ -26,6 +26,9 @@ builder.Services.AddScoped<IWorkflowsService, WorkflowsService>();
 builder.Services.AddScoped<TaskControlService>();
 builder.Services.AddScoped<SourceGroupsService>();
 builder.Services.AddScoped<IContentService, ContentService>();
+builder.Services.AddScoped<FacebookShareService>();
+builder.Services.AddSingleton<FacebookShareBrowser>();
+builder.Services.AddHostedService<FacebookShareWorker>();
 builder.Services.AddScoped<IContentReportService, ContentReportService>();
 builder.Services.AddScoped<IChannelsService, ChannelsService>();
 

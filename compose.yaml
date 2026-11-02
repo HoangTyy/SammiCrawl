@@ -29,7 +29,7 @@ services:
       ASPNETCORE_URLS: "http://+:8080;http://+:8081"
       WorkerApiKey: ${WORKER_API_KEY:-}
       RemoteAiKey: ${REMOTE_AI_KEY:-}
-      Ollama__BaseUrl: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      Ollama__BaseUrl: ${SAMMICRAWL_OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       RemoteAi__BaseUrl: ${REMOTE_AI_BASE_URL:-}
       RemoteAi__ApiKey: ${REMOTE_AI_API_KEY:-}
       Crawl__WorkerId: ${CRAWL_WORKER_ID:-}

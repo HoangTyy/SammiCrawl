@@ -199,13 +199,13 @@ export const TaskQueueView: React.FC<TaskQueueViewProps> = ({
                             style={{ width: `${task.progress}%` }}
                           ></div>
                         </div>
-                        <span className="progress-num">{task.crawledPosts}/{task.maxPosts} bài thu thập ({task.progress}%)</span>
-                        <small>{task.clefEvaluatedPosts === undefined ? 'Chưa có thống kê Clef' : `Clef: ${task.clefEvaluatedPosts}/${task.crawledPosts}`}</small>
+                        <span className="progress-num">{Math.max(0,task.crawledPosts-(task.clefRejectedPosts??0))}/{task.maxPosts} bài giữ lại ({Math.min(100,Math.floor(Math.max(0,task.crawledPosts-(task.clefRejectedPosts??0))/Math.max(1,task.maxPosts)*100))}%)</span>
+                        <small>{task.clefEvaluatedPosts === undefined ? 'Chưa có thống kê Clef' : `Clef: ${task.clefEvaluatedPosts}/${task.crawledPosts} bài đã quét`}</small>
                         {task.clefEvaluatedPosts !== undefined && <small>Phù hợp {task.clefRecommendedPosts ?? 0} · Xem lại {task.clefReviewPosts ?? 0} · Loại {task.clefRejectedPosts ?? 0}</small>}
                       </div>
                     </td>
                     <td data-label="Bài thu được">
-                      <span className="latency-text">{task.crawledPosts} bài</span>
+                      <span className="latency-text">{Math.max(0,task.crawledPosts-(task.clefRejectedPosts??0))} bài</span>
                     </td>
                     <td data-label="Trạng thái">{getStatusBadge(task.status)}
                       {task.errorCode === 'CLEF_EVALUATION_INCOMPLETE' && <small className="task-status-summary">Clef chưa xong{task.clefEvaluatedPosts !== undefined ? ` · còn ${Math.max(0, task.crawledPosts - task.clefEvaluatedPosts)} bài chờ` : ''}</small>}

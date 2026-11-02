@@ -17,7 +17,14 @@ public static class ClefSelectionPolicy
         var result=input.DeepClone().AsObject();
         var state=result["status"]?.ToString();
         if(state is not ("recommended" or "review" or "rejected")||!double.TryParse(result["score"]?.ToString(),NumberStyles.Float,CultureInfo.InvariantCulture,out var score)||!double.IsFinite(score)||score<0||score>100)throw AiGatewayException.InvalidOutput();
-        if(result["selectionVersion"]?.ToString()=="3")return result;
+        if(score<50)
+        {
+            result["modelStatus"]=input["modelStatus"]?.DeepClone()??JsonValue.Create(state);
+            result["status"]="rejected";result["reason"]="Clef chấm dưới 50/100 điểm; tự động loại bài.";
+            result["selectionVersion"]=4;result["selectionNotes"]=new JsonArray("Điểm phù hợp dưới 50/100.");
+            return result;
+        }
+        if(result["selectionVersion"]?.ToString() is "3" or "4")return result;
         var decision=result["decision"];var reason=decision?["reason"]?["choice"]?.ToString();var topic=decision?["topic"]?["choice"]?.ToString();
         var language=decision?["language"]?["choice"]?.ToString()??"unknown";
         var relation=decision?["topic_relation"]?["choice"]?.ToString()??"uncertain";

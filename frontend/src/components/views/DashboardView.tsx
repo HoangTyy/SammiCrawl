@@ -114,7 +114,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 { name: 'Facebook local', engine: 'Thu thập và chống trùng', status: telemetry.activeTargets > 0 ? 'Đang chạy' : 'Sẵn sàng', load: '—' },
                 { name: 'Media', engine: 'Ảnh feed / video HTTP', status: 'Có giới hạn', load: '—' },
                 { name: 'Clef', engine: 'Đánh giá sau thu thập', status: 'Chạy tuần tự', load: '—' },
-                { name: 'Xuất bản', engine: 'Đăng Facebook', status: 'Chưa triển khai', load: '—' }
+                { name: 'Chia sẻ Group', engine: 'Bài Facebook gốc', status: 'Chờ xác nhận riêng', load: '—' },
+                { name: 'Repost / Rewrite', engine: 'Đăng nội dung mới', status: 'Chưa có worker đăng', load: '—' }
               ].map((node, i) => (
                 <div key={i} className="node-tile">
                   <div className="node-tile-top">

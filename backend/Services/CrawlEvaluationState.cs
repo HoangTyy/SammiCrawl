@@ -36,6 +36,8 @@ public sealed class CrawlEvaluationState
         return true;
     }
 
+    public int Retained(int scanned)=>Math.Max(0,scanned-Rejected);
+    public bool TargetReached(int scanned,int target)=>Retained(scanned)>=target&&Evaluated>=scanned;
     public void WriteTo(JsonObject task)
     {
         task["clefEvaluatedPosts"] = Evaluated;

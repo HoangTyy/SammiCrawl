@@ -23,14 +23,14 @@ public sealed class WorkflowsService(IProjectRepository db, AiRunner ai, Faceboo
         var brand = await db.FindDocumentAsync(brandId, "brands");
         if (brand is null || JsonNode.Parse(brand.Json)?["deletedAt"] is not null) return ServiceResult.BadRequest(new { error = "Thương hiệu không còn hoạt động." });
         var mode = config["sourceMode"]?.ToString() ?? "url";
-        if (mode is not ("url" or "group-search" or "brand-links")) return ServiceResult.BadRequest(new { error = "Cách chọn nguồn không hợp lệ." });
+        if (mode is not ("url" or "group-search" or "brand-links" or "ai-auto")) return ServiceResult.BadRequest(new { error = "Cách chọn nguồn không hợp lệ." });
         Uri? url = null;
         if (mode == "url" && (!Uri.TryCreate(config["url"]?.ToString(), UriKind.Absolute, out url) || url.Scheme != "https" || !(url.Host == "facebook.com" || url.Host.EndsWith(".facebook.com")))) return ServiceResult.BadRequest(new { error = "Nhập URL Facebook hợp lệ." });
         if (mode == "group-search")
         {
             var brandProfile = JsonNode.Parse(brand.Json)!;
             var text = config["groupKeywords"]?.ToString();
-            if (string.IsNullOrWhiteSpace(text)) text = string.IsNullOrWhiteSpace(brandProfile["allowedTopics"]?.ToString()) ? brandProfile["name"]?.ToString() : brandProfile["allowedTopics"]!.ToString();
+            if (string.IsNullOrWhiteSpace(text)) return ServiceResult.BadRequest(new { error = "Nhập từ khóa tìm nhóm nguồn; không tự lấy tên thương hiệu hoặc chủ đề biên tập làm từ khóa.", code="GROUP_KEYWORDS_REQUIRED" });
             var keywords = SourceGroupPolicy.Keywords(text);
             if (keywords.Length == 0 || keywords.Any(k => k.Length > 200)) return ServiceResult.BadRequest(new { error = "Nhập tối đa 6 từ khóa tìm nhóm, mỗi từ khóa tối đa 200 ký tự." });
             foreach (var key in new[] { "maxGroups", "groupPostLimit" })
@@ -39,13 +39,23 @@ public sealed class WorkflowsService(IProjectRepository db, AiRunner ai, Faceboo
             config["groupKeywords"] = string.Join("\n", keywords);
             config["url"] = "https://www.facebook.com/search/groups/?q=" + Uri.EscapeDataString(keywords[0]);
         }
-        if (mode == "brand-links")
+        config.Remove("autoDiscover");config.Remove("discoveryProfile");config.Remove("discoveryPrepared");
+        if (mode is "brand-links" or "ai-auto")
         {
             var sources = JsonNode.Parse(brand.Json)?["crawlSourceUrls"];
+            if(mode=="ai-auto" && string.IsNullOrWhiteSpace(sources?.ToString()))
+            {
+                config["autoDiscover"]=true;config["discoveryProfile"]=SourceDiscovery.Profile(JsonNode.Parse(brand.Json)!);
+                config["groupKeywords"]="";config["sourceUrls"]=new JsonArray();config["url"]="https://www.facebook.com/";
+                config["maxGroups"]=5;config["groupPostLimit"]=1000;
+            }
+            else
+            {
             if (BrandPolicy.ValidateCrawlSources(sources, true) is string sourceError) return ServiceResult.BadRequest(new { error = sourceError });
             var urls = BrandPolicy.CrawlSources(sources!.ToString());
             config["sourceUrls"] = new JsonArray(urls.Select(v => JsonValue.Create(v)).ToArray());
             config["url"] = urls[0];
+            }
         }
         config["sourceMode"] = mode;
         foreach (var (field, min, max) in new (string, double, double)[] { ("maxPosts", 1, 1000), ("maxScrolls", 1, 2000), ("delayMinMs", 500, 120000), ("delayMaxMs", 500, 120000), ("minLikes", 0, 10000000), ("minComments", 0, 10000000), ("accountPostLimit", 1, 1000), ("accountRestMinMs", 1000, 3600000), ("accountRestMaxMs", 1000, 3600000) })
@@ -63,12 +73,14 @@ public sealed class WorkflowsService(IProjectRepository db, AiRunner ai, Faceboo
             return ServiceResult.BadRequest(new { error = capacityError, code = "CRAWL_CAPACITY_EXCEEDED" });
         if (mode == "group-search" && config["maxPosts"]!.GetValue<int>() > (long)config["maxGroups"]!.GetValue<int>() * config["groupPostLimit"]!.GetValue<int>())
             return ServiceResult.BadRequest(new { error="Tổng số bài vượt số nhóm tối đa × số bài tối đa mỗi nhóm.", code="GROUP_CAPACITY_EXCEEDED" });
-        config["crawlAccountIds"] = new JsonArray(accounts.Select(a => JsonValue.Create(a.Id.ToString())).ToArray()); config["extractMedia"] = true; config["targetType"] = mode == "brand-links" ? "mixed" : (mode == "group-search" || url!.AbsolutePath.StartsWith("/groups/") ? "group" : "page");
+        config["crawlAccountIds"] = new JsonArray(accounts.Select(a => JsonValue.Create(a.Id.ToString())).ToArray()); config["extractMedia"] = true; config["targetType"] = mode is "brand-links" or "ai-auto" ? "mixed" : (mode == "group-search" || url!.AbsolutePath.StartsWith("/groups/") ? "group" : "page");
         if(config["includeComments"]?.GetValue<bool>()==true)return ServiceResult.BadRequest(new{error="Worker hiện thu thập bài và media, chưa hỗ trợ bình luận. Bỏ chọn Thu thập bình luận trước khi chạy."});
         if(config["minLikes"]!.GetValue<int>()>0||config["minComments"]!.GetValue<int>()>0)return ServiceResult.BadRequest(new{error="Bộ lọc tương tác chưa hỗ trợ trên worker hiện tại; đặt tối thiểu về 0."});
         var aiStatus = JsonSerializer.SerializeToNode(await ai.Status());
         if (CrawlEvaluationState.ReadinessError(aiStatus) is string aiError)
             return ServiceResult.Json(new { error = aiError, code = "CLEF_UNAVAILABLE" }, statusCode: 503);
+        if(config["autoDiscover"]?.GetValue<bool>()==true && AiModelUnavailableException.CheckBonsai(aiStatus) is string discoveryError)
+            return ServiceResult.Json(new{error=discoveryError,code="SOURCE_AI_UNAVAILABLE"},statusCode:503);
         var id=Guid.NewGuid();config["id"]=id.ToString();config["executionToken"]=Guid.NewGuid().ToString();config["workerOwnerId"]=worker.OwnerId;config["targetName"]=JsonNode.Parse(brand.Json)?["name"]?.ToString()??brandId.ToString();config["createdAt"]=DateTimeOffset.UtcNow.ToString("O");config["status"]="pending";config["errorReason"]="Đã vào hàng đợi cào; chờ worker xử lý lần lượt.";config["progress"]=0;config["crawledPosts"]=0;config["workerNode"]="Facebook local";config["ipAddress"]="—";config["latencyMs"]=0;
         var task=new Document{Id=id,Kind="tasks",Json=config.ToJsonString()};db.AddDocument(task);await db.SaveChangesAsync();
         if(!worker.Enqueue(id, config["executionToken"]!.ToString())){config["status"]="paused";task.Json=config.ToJsonString();await db.SaveChangesAsync();return ServiceResult.Conflict(new{error="Không thể thêm vào hàng đợi cào. Tác vụ chưa chạy."});}

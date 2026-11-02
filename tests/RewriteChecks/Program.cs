@@ -22,6 +22,9 @@ gateway.MapGet("/bridge/health", () => Results.Json(new { online = true, busy = 
 gateway.MapPost("/bridge/rewrite", (JsonObject body) => { calls.Add(body.DeepClone().AsObject()); return Results.Json(new { text = answer }); });
 gateway.MapPost("/bridge/evaluate",(JsonObject body)=>{evaluations.Add(body.DeepClone().AsObject());return Results.Json(new JsonObject{["status"]="recommended",["score"]=90,["reason"]="Phù hợp chủ đề mẫu",["topic"]="Chủ đề mẫu",["decision"]=new JsonObject{["language"]=new JsonObject{["choice"]="vi"},["topic_relation"]=new JsonObject{["choice"]="direct"}},["warnings"]=new JsonArray()});});
 var systemRequests=new List<JsonObject>();
+var planningRequests=new List<JsonObject>();
+gateway.MapGet("/api/tags",()=>Results.Json(new { models=new[]{new{name="bonsai-2:27b"},new{name="clef-flash:latest"}} }));
+gateway.MapPost("/api/chat",(JsonObject body)=>{planningRequests.Add(body.DeepClone().AsObject());return Results.Json(new{message=new{content="review công nghệ\nreview mỹ phẩm\nđồ dùng sinh viên"}});});
 var systemAnswers=new JsonObject{["fit"]=new JsonObject{["choice"]="recommended"},["topic"]=new JsonObject{["choice"]="topic_0"},["suitability"]=new JsonObject{["score"]=3.6},["reason"]=new JsonObject{["choice"]="on_topic"},["language"]=new JsonObject{["choice"]="vi"},["topic_relation"]=new JsonObject{["choice"]="direct"},["source_risk"]=new JsonObject{["noul"]=0.0},["media_risk"]=new JsonObject{["noul"]=0.0}};
 gateway.MapGet("/api/ps",()=>Results.Json(new{models=Array.Empty<object>()}));
 gateway.MapPost("/api/generate",()=>Results.Json(new{}));
@@ -53,8 +56,23 @@ JsonObject Request(string branch = "rewrite") => new() { ["branch"] = branch, ["
 try
 {
     JsonObject Eval(string state,int score,string reason="on_topic",string topic="topic_0",double sourceRisk=0,double mediaRisk=0)=>new(){["status"]=state,["score"]=score,["reason"]="Lý do model",["warnings"]=new JsonArray(),["decision"]=new JsonObject{["language"]=new JsonObject{["choice"]="vi"},["topic_relation"]=new JsonObject{["choice"]="direct"},["fit"]=new JsonObject{["choice"]=state},["reason"]=new JsonObject{["choice"]=reason},["topic"]=new JsonObject{["choice"]=topic},["source_risk"]=new JsonObject{["noul"]=sourceRisk},["media_risk"]=new JsonObject{["noul"]=mediaRisk}}};
+    Check(SourceDiscovery.Parse("- review sách\n- review sách\nđồ dùng sinh viên").Length==2,"AI source keywords are deduplicated");
+    foreach(var bad in new[]{"https://facebook.com/groups/123/","review sách\n```",""})
+    {try{SourceDiscovery.Parse(bad);Check(false,"invalid source plan");}catch(InvalidOperationException){Check(true,"invalid source plan cannot become a URL or empty search");}}
+    var articleRecords=new RecordsService(repo,null!,null!);
+    var deletedSource=await articleRecords.Delete("articles",articleId);
+    Check(deletedSource.Status==200&&JsonNode.Parse(articleDoc.Json)?["deletedAt"] is not null,"delete article moves source to trash without touching Facebook or drafts");
+    Check((await articleRecords.Restore("articles",articleId)).Status==200&&JsonNode.Parse(articleDoc.Json)?["deletedAt"] is null,"article can be restored from trash");
+    articleDoc.Json=sourceBefore;
+    var quotaEvaluation=new CrawlEvaluationState();
+    for(var i=0;i<10;i++)quotaEvaluation.Record(ServiceResult.Ok(new JsonObject{["aiStatus"]="rejected",["aiScore"]=25,["aiEvaluatedAt"]=DateTimeOffset.UtcNow.ToString("O")}));
+    Check(quotaEvaluation.Retained(10)==0&&!quotaEvaluation.TargetReached(10,10),"ten rejected articles do not meet ten article target");
+    for(var i=0;i<10;i++)quotaEvaluation.Record(ServiceResult.Ok(new JsonObject{["aiStatus"]="review",["aiScore"]=60,["aiEvaluatedAt"]=DateTimeOffset.UtcNow.ToString("O")}));
+    Check(quotaEvaluation.Retained(20)==10&&quotaEvaluation.TargetReached(20,10),"ten retained replacements meet target after ten rejections");
     var defaultPolicy=new JsonObject();
-    Check(ClefSelectionPolicy.Apply(Eval("recommended",43),defaultPolicy)["status"]?.ToString()=="review","43point recommended label is downgraded instead of selected");
+    Check(ClefSelectionPolicy.Apply(Eval("review",49,"unverified"),defaultPolicy)["status"]?.ToString()=="rejected","49 is rejected before review exemptions");
+    Check(ClefSelectionPolicy.Apply(Eval("review",50),defaultPolicy)["status"]?.ToString()=="review","50 is not automatically rejected");
+    Check(ClefSelectionPolicy.Apply(Eval("recommended",43),defaultPolicy)["status"]?.ToString()=="rejected","score below 50 is rejected even when model recommends");
     Check(ClefSelectionPolicy.Apply(Eval("recommended",75),defaultPolicy)["status"]?.ToString()=="recommended","consistent75point article passes default selection threshold");
     Check(ClefSelectionPolicy.Apply(Eval("recommended",81),new JsonObject{["selectionMinScore"]=85})["status"]?.ToString()=="review","brand-specific minimum score is enforced");
     Check(ClefSelectionPolicy.Apply(Eval("recommended",90,topic:"other"),defaultPolicy)["status"]?.ToString()=="review","unknown topic cannot be recommended merely from fit label");
@@ -86,6 +104,8 @@ try
     Check((await localFixtureAi.Evaluate("English content about AI",languageProfile,[]))["status"]?.ToString()=="review","production parser blocks English recommendation despite high model score");
     systemAnswers["language"]!["choice"]="vi";systemAnswers["topic_relation"]!["choice"]="indirect";
     Check((await localFixtureAi.Evaluate("Chỉ nhắc đến một từ AI.",languageProfile,[]))["status"]?.ToString()=="review","production parser blocks indirect recommendation");
+    var planned=await localFixtureAi.Rewrite(new RewriteRequest("{\"allowedTopics\":\"review đồ dùng sinh viên\"}",Mode:"source-keywords",Temperature:0.2));
+    Check(SourceDiscovery.Parse(planned).Length==3&&planningRequests.Single()["messages"]![0]!["content"]!.ToString().Contains("tìm nhóm Facebook nguồn")&&!planningRequests.Single()["messages"]![1]!["content"]!.ToString().Contains("Bài viết mới"),"production source planning uses dedicated prompt, not Facebook rewrite prompt");
     systemAnswers["language"]!["choice"]="invalid";
     try{await localFixtureAi.Evaluate("test",languageProfile,[]);Check(false,"invalid language");}catch(AiGatewayException ex){Check(ex.Code=="CLEF_INVALID_OUTPUT","malformed language answer is rejected rather than treated as valid selection");}
     Check(BrandPolicy.Validate(new JsonObject{["selectionMinScore"]=101}) is not null,"invalid selection threshold rejected");
@@ -109,6 +129,16 @@ try
     Check(firstCrawl.Status==200 && secondCrawl.Status==200 && repo.Rows.Count(r=>r.Kind=="tasks")==2, "multiple crawl submissions queue even while AI busy without starting worker");
     var taskSnapshot=JsonNode.Parse(repo.Rows.First(r=>r.Kind=="tasks").Json)!;
     Check(taskSnapshot["sourceUrls"]!.AsArray().Count==2 && taskSnapshot["sourceUrls"]![0]!.ToString()=="https://www.facebook.com/groups/123/" && !taskSnapshot.ToJsonString().Contains("ignored-client-url"), "crawl snapshots brand sources in order instead of trusting client URLs");
+    var autoConfig=JsonNode.Parse(CrawlConfig().ToJsonString())!.AsObject();autoConfig["sourceMode"]="ai-auto";autoConfig["groupKeywords"]="";
+    var autoResult=await workflows.StartCrawl(autoConfig);
+    Check(autoResult.Status==200&&autoConfig["sourceUrls"]!.AsArray().Count==2,"AI auto uses configured brand sources without manual keywords");
+    var savedBrand=brandRow.Json;brandData.Remove("crawlSourceUrls");brandRow.Json=brandData.ToJsonString();
+    var discoverConfig=JsonNode.Parse(CrawlConfig().ToJsonString())!.AsObject();discoverConfig["sourceMode"]="ai-auto";discoverConfig["groupKeywords"]="ignored-client-keyword";
+    var discoverResult=await workflows.StartCrawl(discoverConfig);
+    Check(discoverResult.Status==200&&discoverConfig["autoDiscover"]!.GetValue<bool>()&&discoverConfig["groupKeywords"]!.ToString()==""&&discoverConfig["discoveryProfile"] is JsonObject,"AI mode without links queues discovery from server profile instead of requiring links or trusting client keywords");
+    var linksOnly=JsonNode.Parse(CrawlConfig().ToJsonString())!.AsObject();
+    Check((await workflows.StartCrawl(linksOnly)).Status==400,"explicit brand-links mode still requires saved links");
+    brandRow.Json=savedBrand;
     Check(taskSnapshot["status"]!.ToString()=="pending", "crawl submission persists pending state for UI queue");
     var taskRow=repo.Rows.First(r=>r.Kind=="tasks");var taskId=taskRow.Id;
     var controls=new TaskControlService(repo,worker,ai);
@@ -159,9 +189,6 @@ try
     var manualId=Guid.Parse(manualDraft["id"]!.ToString());var beforeMark=repo.Rows.Single(d=>d.Id==manualId).Json;
     var postedAt=DateTimeOffset.UtcNow.AddMinutes(-5);
     JsonObject PublishedRequest(string link="https://www.facebook.com/groups/123/posts/999/",string? at=null,bool confirmed=true)=>new(){["publishedUrl"]=link,["publishedAt"]=at??postedAt.ToString("O"),["confirmed"]=confirmed,["expectedVersion"]=manualDraft["createdAt"]!.ToString()};
-    Check((await service.MarkPublished(manualId,PublishedRequest(""),"fixture-user")).Status==400,"manual publication requires post URL");
-    Check((await service.MarkPublished(manualId,PublishedRequest("https://www.facebook.com/groups/123/"),"fixture-user")).Status==400,"channel link cannot count as published post");
-    Check((await service.MarkPublished(manualId,PublishedRequest("https://user:secret@www.facebook.com/groups/123/posts/999/"),"fixture-user")).Status==400,"manual publication rejects URL userinfo");
     Check((await service.MarkPublished(manualId,PublishedRequest(at:DateTimeOffset.UtcNow.AddDays(1).ToString("O")),"fixture-user")).Status==400,"future publication timestamp rejected");
     Check((await service.MarkPublished(manualId,PublishedRequest(at:"2026-11-01T12:00:00"),"fixture-user")).Status==400,"manual timestamp requires explicit timezone");
     Check((await service.MarkPublished(manualId,PublishedRequest(confirmed:false),"fixture-user")).Status==400&&repo.Rows.Single(d=>d.Id==manualId).Json==beforeMark,"unconfirmed request has no side effects");
@@ -181,6 +208,16 @@ try
     Check((await service.MarkArticlePublished(articleId,directRequest,"fixture-user")).Status==200&&repo.Rows.Count(r=>r.Kind=="drafts")==countBeforeDirect+1,"repeated source mark cannot create duplicate publication records");
     var invalidDirect=PublishedRequest("https://www.facebook.com/groups/123/posts/1002/");invalidDirect["channelId"]="missing";
     Check((await service.MarkArticlePublished(articleId,invalidDirect,"fixture-user")).Status==400&&repo.Rows.Count(r=>r.Kind=="drafts")==countBeforeDirect+1,"invalid source target leaves no intermediate draft");
+    var noLink=PublishedRequest("");noLink["channelId"]="fixture-channel";
+    var noLinkResult=await service.MarkArticlePublished(articleId,noLink,"fixture-user");
+    Check(noLinkResult.Status==200&&((JsonObject)noLinkResult.Value!)["publishedUrl"] is null,"manual mark accepts no link");
+    var afterNoLink=repo.Rows.Count;
+    Check((await service.MarkArticlePublished(articleId,noLink,"fixture-user")).Status==200&&repo.Rows.Count==afterNoLink,"no-link mark remains idempotent");
+    var noLinkReport=System.Text.Json.JsonSerializer.SerializeToNode((await new ContentReportService(repo).Overview(DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(7)).ToString("yyyy-MM-dd"))).Value)!;
+    Check(noLinkReport["published"]?.GetValue<int>()==3,"report counts explicit manual evidence without link");
+    var tasksBeforeEmptySearch=repo.Rows.Count;
+    var emptySearch=await new WorkflowsService(repo,null!,null!).StartCrawl(new JsonObject{["brandId"]=brandId.ToString(),["sourceMode"]="group-search",["groupKeywords"]=""});
+    Check(emptySearch.Status==400&&repo.Rows.Count==tasksBeforeEmptySearch,"empty group search never falls back to editorial topics or queues a task");
     Console.WriteLine($"Rewrite checks passed: {checks}. No real database, AI, or Facebook used.");
 }
 finally { await gateway.StopAsync(); await gateway.DisposeAsync(); Directory.Delete(root, recursive: true); }

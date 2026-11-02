@@ -176,13 +176,14 @@ public sealed class ContentService(IProjectRepository db, AiRunner ai, IWebHostE
     {
         at=default;
         url=request["publishedUrl"]?.ToString()?.Trim();
-        if(!BrandPolicy.FacebookPostUrl(url)||!Uri.TryCreate(url,UriKind.Absolute,out var uri)||uri.Port!=443||!string.IsNullOrEmpty(uri.UserInfo))return "Nhập link HTTPS của bài đã đăng trên Facebook, không phải link kênh.";
+        if(url?.Length>2048)return "Link ghi chú tối đa 2.048 ký tự.";
+        if(string.IsNullOrWhiteSpace(url))url=null;
         var text=request["publishedAt"]?.ToString();
         if(string.IsNullOrWhiteSpace(text)||!System.Text.RegularExpressions.Regex.IsMatch(text,@"(?:Z|[+-]\d{2}:\d{2})$")||!DateTimeOffset.TryParse(text,System.Globalization.CultureInfo.InvariantCulture,System.Globalization.DateTimeStyles.None,out at)||at>DateTimeOffset.UtcNow)return "Thời điểm đã đăng phải hợp lệ, có múi giờ và không ở tương lai.";
         if(request["confirmed"] is not JsonValue flag||!flag.TryGetValue<bool>(out var confirmed)||!confirmed)return "Xác nhận bạn đã đăng bài thủ công trước khi ghi nhận.";
         return null;
     }
-    static void SetPublication(JsonObject draft,string url,DateTimeOffset at,string actor)
+    static void SetPublication(JsonObject draft,string? url,DateTimeOffset at,string actor)
     {
         draft["status"]="published";draft["publishedUrl"]=url;draft["publishedAt"]=at.ToUniversalTime().ToString("O");
         draft["publicationMethod"]="manual";draft["publicationEvidence"]="user_reported";draft["publishedBy"]=actor;draft["publicationRecordedAt"]=DateTimeOffset.UtcNow.ToString("O");draft["updatedAt"]=DateTimeOffset.UtcNow.ToString("O");
@@ -192,7 +193,7 @@ public sealed class ContentService(IProjectRepository db, AiRunner ai, IWebHostE
         if(ReadPublication(request,out var url,out var at) is string error)return ServiceResult.BadRequest(new{error});
         var built=await CreateDraftCore(id,new JsonObject{["branch"]="repost",["channelId"]=request["channelId"]?.DeepClone()},false);
         if(built.Status!=200||built.Value is not JsonObject record)return built;
-        var key=id+"|"+record["channelId"]+"|"+(ArticleDeduplication.SourceKey(url!)??url!.TrimEnd('/'));
+        var key=id+"|"+record["channelId"]+"|"+(string.IsNullOrEmpty(url)?"manual-no-link":ArticleDeduplication.SourceKey(url)??url.TrimEnd('/'));
         var recordId=new Guid(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(key))[..16]);
         record["id"]=recordId.ToString();SetPublication(record,url!,at,actor);
         var saved=await db.SaveManualPublicationAsync(new Document{Id=recordId,Kind="drafts",Json=record.ToJsonString()},$"Ghi nhận đăng thủ công trực tiếp bài nguồn {id}");
