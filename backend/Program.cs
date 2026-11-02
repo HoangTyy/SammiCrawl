@@ -29,6 +29,8 @@ builder.Services.AddScoped<IContentService, ContentService>();
 builder.Services.AddScoped<IContentReportService, ContentReportService>();
 builder.Services.AddScoped<IChannelsService, ChannelsService>();
 
+builder.Services.AddSingleton<CrawlGlobalLock>();
+builder.Services.AddSingleton<CrawlWorkerIdentity>();
 builder.Services.AddSingleton<FacebookCrawlWorker>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<FacebookCrawlWorker>());
 builder.Services.AddSingleton<AiRunner>();

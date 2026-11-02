@@ -124,6 +124,8 @@ sealed class FixtureDraftService(FixtureAiRunner ai):IContentService
     }
     public Task<ServiceResult> ReadVisualContext(Guid id)=>throw new NotSupportedException();
     public Task<ServiceResult> SaveDraft(Guid id,JsonObject request)=>throw new NotSupportedException();
+    public Task<ServiceResult> MarkArticlePublished(Guid id,JsonObject request,string actor)=>throw new NotSupportedException();
+    public Task<ServiceResult> MarkPublished(Guid id,JsonObject request,string actor)=>throw new NotSupportedException();
     public Task<ServiceResult> ApproveDraft(Guid id,JsonObject request,string reviewer)=>throw new NotSupportedException();
     public Task<ServiceResult> EvaluateArticle(Guid id)=>throw new NotSupportedException();
     public Task<ServiceResult> Rewrite(RewriteRequest request)=>throw new NotSupportedException();

@@ -9,7 +9,7 @@ public interface IChannelsService
 }
 public sealed class ChannelsService(IProjectRepository db) : IChannelsService
 {
-    static readonly string[] Fields = ["name", "type", "url", "dailyTarget", "minWords", "maxWords", "audience", "tone", "contentGuidelines", "imageRequirements", "requireBranding", "active", "publishAccountId"];
+    static readonly string[] Fields = ["allowedTopics", "name", "type", "url", "dailyTarget", "minWords", "maxWords", "audience", "tone", "contentGuidelines", "imageRequirements", "requireBranding", "active", "publishAccountId"];
     public async Task<ServiceResult> List()
     {
         var brands = await db.ListDocumentsAsync("brands");

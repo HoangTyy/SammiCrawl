@@ -32,6 +32,7 @@ services:
       Ollama__BaseUrl: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       RemoteAi__BaseUrl: ${REMOTE_AI_BASE_URL:-}
       RemoteAi__ApiKey: ${REMOTE_AI_API_KEY:-}
+      Crawl__WorkerId: ${CRAWL_WORKER_ID:-}
       AiQueue__MaxJobs: ${AI_QUEUE_MAX_JOBS:-8}
       AiQueue__MaxPayloadBytes: ${AI_QUEUE_MAX_PAYLOAD_BYTES:-67108864}
       AiQueue__WaitTimeoutSeconds: ${AI_QUEUE_WAIT_TIMEOUT_SECONDS:-900}

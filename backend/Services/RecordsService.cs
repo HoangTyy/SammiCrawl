@@ -103,7 +103,7 @@ public sealed class RecordsService(IProjectRepository db, IDataProtectionProvide
         if (kind == "brands" && data.ContainsKey("updatedAt") && data["updatedAt"]?.ToString() != original["updatedAt"]?.ToString()) return ServiceResult.Conflict(new { error = "Hồ sơ vừa đổi ở nơi khác. Tải lại trước khi sửa." });
         var fields = kind switch
         {
-            "brands" => new[] { "crawlSourceUrls", "facebookGroupUrl", "name", "description", "language", "tone", "writingStyle", "audience", "callToAction", "requiredKeywords", "forbiddenKeywords", "rules", "allowedTopics", "forbiddenContent", "verifyInformation", "requireMediaRights", "requireSponsorLabel", "channels" },
+            "brands" => new[] { "selectionMinScore", "crawlSourceUrls", "facebookGroupUrl", "name", "description", "language", "tone", "writingStyle", "audience", "callToAction", "requiredKeywords", "forbiddenKeywords", "rules", "allowedTopics", "forbiddenContent", "verifyInformation", "requireMediaRights", "requireSponsorLabel", "channels" },
             "presets" => new[] { "sourceMode", "groupKeywords", "maxGroups", "groupPostLimit", "url", "destinationPageUrl", "rewriteMinWords", "rewriteMaxWords", "accountPostLimit", "accountRestMinMs", "accountRestMaxMs", "name", "targetType", "maxPosts", "maxScrolls", "delayMinMs", "delayMaxMs", "minLikes", "minComments", "keywords", "topicDescription", "includeComments", "crawlAccountIds", "publishAccountId", "brandId", "branch", "minAiScore", "topPosts", "rewriteInstructions", "rewriteTemperature", "requireApproval" },
             _ => new[] { "text" }
         };

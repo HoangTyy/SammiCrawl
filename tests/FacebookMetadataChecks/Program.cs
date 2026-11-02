@@ -54,4 +54,20 @@ Check(article["sourcePublishedAt"] is null && article["comments"] is null && art
 article = new JsonObject();
 FacebookPostMetadata.Apply(article, JsonNode.Parse("{\"posted\":{\"unix\":\"999999999999999999\",\"datetime\":\"2099-01-01T00:00:00Z\"}}"), captured);
 Check(article["sourcePublishedAt"] is null, "out-of-range and future timestamps cannot become source publication time");
+async Task<JsonObject> Media(string html)
+{
+    await page.SetContentAsync("<section role='article' id='post'>"+html+"</section>");
+    return JsonNode.Parse(await page.Locator("#post").EvaluateAsync<string>("root=>JSON.stringify(("+FacebookPostMedia.Script+")(root))"))!.AsObject();
+}
+var media=await Media("<a href='https://www.facebook.com/photo/?fbid=1'><img data-src='https://scontent.fixture.fbcdn.net/lazy.jpg'></a>");
+Check(media["images"]!.AsArray().Count==1&&media["images"]![0]!.ToString().EndsWith("lazy.jpg"),"lazy photo captured before naturalWidth becomes available");
+media=await Media("<img width='150' height='400' src='https://scontent.fixture.fbcdn.net/portrait.jpg'><img width='40' height='40' src='https://scontent.fixture.fbcdn.net/icon.jpg'>");
+Check(media["images"]!.AsArray().Count==1,"portrait narrower than200 pixels retained while small icons excluded");
+media=await Media("<img width='300' height='200' src='https://scontent.fixture.fbcdn.net/small.jpg' srcset='https://scontent.fixture.fbcdn.net/640.jpg 640w, https://scontent.fixture.fbcdn.net/1280.jpg 1280w'>");
+Check(media["images"]![0]!.ToString().EndsWith("1280.jpg")&&media["imageAlternatives"]![media["images"]![0]!.ToString()]!.AsArray().Count>0,"highest declared srcset source selected with bounded alternatives");
+media=await Media("<a href='https://www.facebook.com/user/123/'><img width='400' height='400' src='https://scontent.fixture.fbcdn.net/avatar.jpg'></a><div role='article'><img width='400' height='400' src='https://scontent.fixture.fbcdn.net/comment.jpg'></div><img width='400' height='400' src='https://evil.test/img.jpg'>");
+Check(media["images"]!.AsArray().Count==0,"profile, nested comment and untrusted host images excluded");
+media=await Media("<a href='https://www.facebook.com/photo/?fbid=1'><img src='data:image/png;base64,broken'></a>");
+Check(media["images"]!.AsArray().Count==0&&media["unresolvedImages"]!.GetValue<int>()==1,"unresolved photo is warned instead of silently treated as text-only");
+media=await Media("<p>Bài chỉ có chữ</p>");Check(media["unresolvedImages"]!.GetValue<int>()==0&&media["images"]!.AsArray().Count==0,"genuine text-only post does not invent missing media");
 Console.WriteLine($"Facebook metadata checks passed: {checks}. Fixture HTML only; no database, Facebook, or AI.");

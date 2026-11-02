@@ -8,6 +8,8 @@ public interface IContentService
     Task<ServiceResult> ReadVisualContext(Guid id);
     Task<ServiceResult> CreateDraft(Guid id, JsonObject request);
     Task<ServiceResult> SaveDraft(Guid id, JsonObject request);
+    Task<ServiceResult> MarkArticlePublished(Guid id,JsonObject request,string actor);
+    Task<ServiceResult> MarkPublished(Guid id,JsonObject request,string actor);
     Task<ServiceResult> ApproveDraft(Guid id, JsonObject request, string reviewer);
     Task<ServiceResult> EvaluateArticle(Guid id);
     Task<ServiceResult> Rewrite(RewriteRequest r);
@@ -51,7 +53,8 @@ public sealed class ContentService(IProjectRepository db, AiRunner ai, IWebHostE
         catch(Exception ex){logger.LogError(ex,"Image transcription failed");return ServiceResult.Json(new{error="AI chưa hoàn tất đọc ảnh. Kiểm tra kết nối/model trên máy AI rồi thử lại; chưa tạo bản rewrite."},statusCode:502);}
         finally{ai.Release();}
     }
-    public async Task<ServiceResult> CreateDraft(Guid id, JsonObject request)
+    public Task<ServiceResult> CreateDraft(Guid id,JsonObject request)=>CreateDraftCore(id,request,true);
+    async Task<ServiceResult> CreateDraftCore(Guid id, JsonObject request,bool persist)
     {
         var doc = await db.FindDocumentAsync(id, "articles");
         if (doc is null) return ServiceResult.NotFound(new { error = "Không tìm thấy bài gốc." });
@@ -98,6 +101,7 @@ public sealed class ContentService(IProjectRepository db, AiRunner ai, IWebHostE
             ["media"] = article["media"]?.DeepClone() ?? new JsonArray(), ["status"] = "awaiting_review", ["review"] = new JsonObject(),
             ["createdAt"] = DateTimeOffset.UtcNow.ToString("O")
         };
+        if(!persist)return ServiceResult.Ok(draft);
         db.AddDocument(new Document { Id = draftId, Kind = "drafts", Json = draft.ToJsonString() });
         db.AddLog(new Audit { Message = $"Đã tạo bản nháp {branch} {draftId} từ bài {id}, kênh {channel["name"]}; chờ duyệt." });
         await db.SaveChangesAsync();
@@ -128,8 +132,8 @@ public sealed class ContentService(IProjectRepository db, AiRunner ai, IWebHostE
         var draft = JsonNode.Parse(doc.Json)!.AsObject();
         if (draft["status"]?.ToString() != "awaiting_review") return ServiceResult.Conflict(new { error = "Không sửa bản nháp đã duyệt." });
         if (ApplyDraftEdits(draft, request) is string error) return ServiceResult.BadRequest(new { error });
-        draft["updatedAt"] = DateTimeOffset.UtcNow.ToString("O"); doc.Json = draft.ToJsonString();
-        await db.SaveChangesAsync(); return ServiceResult.Ok(draft);
+        draft["updatedAt"] = DateTimeOffset.UtcNow.ToString("O");
+        return await db.TryUpdateDraftAsync(id,doc.Json,draft.ToJsonString(),$"Đã lưu bản nháp {id}")?ServiceResult.Ok(draft):ServiceResult.Conflict(new{error="Bản nháp vừa thay đổi. Tải lại trước khi lưu."});
     }
 
     public async Task<ServiceResult> ApproveDraft(Guid id, JsonObject request, string reviewer)
@@ -164,8 +168,49 @@ public sealed class ContentService(IProjectRepository db, AiRunner ai, IWebHostE
         draft["channelId"] = channel["id"]?.ToString(); draft["channelSnapshot"] = channel.DeepClone(); draft["brandPolicySnapshot"] = profile.DeepClone();
         draft["destinationUrl"] = channel["url"]?.ToString(); draft["facebookGroupUrl"] = channel["type"]?.ToString() == "group" ? channel["url"]?.ToString() : null;
         draft["status"] = "approved_pending_worker"; draft["approvedAt"] = DateTimeOffset.UtcNow.ToString("O"); draft["reviewedBy"] = reviewer;
-        doc.Json = draft.ToJsonString(); db.AddLog(new Audit { Message = $"Đã duyệt {id} vào kênh {channel["name"]}; chưa đăng, chờ worker." });
-        await db.SaveChangesAsync(); return ServiceResult.Ok(draft);
+        draft["updatedAt"]=DateTimeOffset.UtcNow.ToString("O");
+        return await db.TryUpdateDraftAsync(id,doc.Json,draft.ToJsonString(),$"Đã duyệt {id}; chưa đăng, chờ worker.")?ServiceResult.Ok(draft):ServiceResult.Conflict(new{error="Bản nháp vừa thay đổi. Tải lại trước khi duyệt."});
+    }
+
+    static string? ReadPublication(JsonObject request,out string? url,out DateTimeOffset at)
+    {
+        at=default;
+        url=request["publishedUrl"]?.ToString()?.Trim();
+        if(!BrandPolicy.FacebookPostUrl(url)||!Uri.TryCreate(url,UriKind.Absolute,out var uri)||uri.Port!=443||!string.IsNullOrEmpty(uri.UserInfo))return "Nhập link HTTPS của bài đã đăng trên Facebook, không phải link kênh.";
+        var text=request["publishedAt"]?.ToString();
+        if(string.IsNullOrWhiteSpace(text)||!System.Text.RegularExpressions.Regex.IsMatch(text,@"(?:Z|[+-]\d{2}:\d{2})$")||!DateTimeOffset.TryParse(text,System.Globalization.CultureInfo.InvariantCulture,System.Globalization.DateTimeStyles.None,out at)||at>DateTimeOffset.UtcNow)return "Thời điểm đã đăng phải hợp lệ, có múi giờ và không ở tương lai.";
+        if(request["confirmed"] is not JsonValue flag||!flag.TryGetValue<bool>(out var confirmed)||!confirmed)return "Xác nhận bạn đã đăng bài thủ công trước khi ghi nhận.";
+        return null;
+    }
+    static void SetPublication(JsonObject draft,string url,DateTimeOffset at,string actor)
+    {
+        draft["status"]="published";draft["publishedUrl"]=url;draft["publishedAt"]=at.ToUniversalTime().ToString("O");
+        draft["publicationMethod"]="manual";draft["publicationEvidence"]="user_reported";draft["publishedBy"]=actor;draft["publicationRecordedAt"]=DateTimeOffset.UtcNow.ToString("O");draft["updatedAt"]=DateTimeOffset.UtcNow.ToString("O");
+    }
+    public async Task<ServiceResult> MarkArticlePublished(Guid id,JsonObject request,string actor)
+    {
+        if(ReadPublication(request,out var url,out var at) is string error)return ServiceResult.BadRequest(new{error});
+        var built=await CreateDraftCore(id,new JsonObject{["branch"]="repost",["channelId"]=request["channelId"]?.DeepClone()},false);
+        if(built.Status!=200||built.Value is not JsonObject record)return built;
+        var key=id+"|"+record["channelId"]+"|"+(ArticleDeduplication.SourceKey(url!)??url!.TrimEnd('/'));
+        var recordId=new Guid(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(key))[..16]);
+        record["id"]=recordId.ToString();SetPublication(record,url!,at,actor);
+        var saved=await db.SaveManualPublicationAsync(new Document{Id=recordId,Kind="drafts",Json=record.ToJsonString()},$"Ghi nhận đăng thủ công trực tiếp bài nguồn {id}");
+        var value=JsonNode.Parse(saved.Json)!.AsObject();
+        return DateTimeOffset.TryParse(value["publishedAt"]?.ToString(),out var savedAt)&&savedAt==at?ServiceResult.Ok(value):ServiceResult.Conflict(new{error="Bài này đã được ghi nhận cho kênh và link đó với thời điểm khác. Mở mục Đã đăng để kiểm tra."});
+    }
+
+    public async Task<ServiceResult> MarkPublished(Guid id,JsonObject request,string actor)
+    {
+        var doc=await db.FindDocumentAsync(id,"drafts");if(doc is null)return ServiceResult.NotFound();
+        var draft=JsonNode.Parse(doc.Json)!.AsObject();
+        if(ReadPublication(request,out var url,out var at) is string error)return ServiceResult.BadRequest(new{error});
+        if(draft["status"]?.ToString()=="published")
+            return draft["publishedUrl"]?.ToString()==url&&DateTimeOffset.TryParse(draft["publishedAt"]?.ToString(),out var saved)&&saved==at?ServiceResult.Ok(draft):ServiceResult.Conflict(new{error="Bản nháp đã được ghi nhận đăng. Không ghi đè thông tin cũ."});
+        if(draft["deletedAt"] is not null||draft["status"]?.ToString() is not ("awaiting_review" or "approved_pending_worker"))return ServiceResult.Conflict(new{error="Trạng thái bản nháp không cho phép ghi nhận đã đăng."});
+        if(request["expectedVersion"] is not null&&request["expectedVersion"]?.ToString()!=(draft["updatedAt"]??draft["createdAt"])?.ToString())return ServiceResult.Conflict(new{error="Nội dung vừa được sửa ở nơi khác. Tải lại trước khi đánh dấu."});
+        SetPublication(draft,url!,at,actor);
+        return await db.TryUpdateDraftAsync(id,doc.Json,draft.ToJsonString(),$"Người dùng ghi nhận đã đăng thủ công bản nháp {id}; chưa kiểm chứng với Facebook.")?ServiceResult.Ok(draft):ServiceResult.Conflict(new{error="Bản nháp vừa thay đổi. Tải lại trước khi đánh dấu."});
     }
 
     public async Task<ServiceResult> EvaluateArticle(Guid id)
@@ -180,37 +225,43 @@ public sealed class ContentService(IProjectRepository db, AiRunner ai, IWebHostE
         await ai.AcquireAsync();
         try
         {
+            var mediaIncomplete=false;
             var images = new List<string>(); var warnings = (article["mediaWarnings"] as JsonArray ?? new JsonArray()).Select(n => n!.ToString()).ToList();
             foreach (var media in article["media"] as JsonArray ?? new JsonArray())
             {
-                if (media?["type"]?.ToString() == "video") { warnings.Add("Video chưa được phân tích khung hình; cần xem thủ công."); continue; }
+                if (media?["type"]?.ToString() == "video") { mediaIncomplete=true; warnings.Add("Video chưa được phân tích khung hình; cần xem thủ công."); continue; }
                 var path = BrandPolicy.LocalMedia(environment.ContentRootPath, media?["url"]?.ToString());
-                if (path is null || !new[] { ".jpg", ".jpeg", ".png", ".webp" }.Contains(Path.GetExtension(path).ToLowerInvariant()) || new FileInfo(path).Length > 5_000_000 || images.Count >= 4) { warnings.Add("Có media chưa phân tích được; cần xem thủ công."); continue; }
+                if (path is null || !new[] { ".jpg", ".jpeg", ".png", ".webp" }.Contains(Path.GetExtension(path).ToLowerInvariant()) || new FileInfo(path).Length > 5_000_000 || images.Count >= 4) { mediaIncomplete=true; warnings.Add("Có media chưa phân tích được; cần xem thủ công."); continue; }
                 images.Add(Convert.ToBase64String(await File.ReadAllBytesAsync(path)));
             }
             var evaluationProfile=profile.DeepClone();
             if(!string.IsNullOrWhiteSpace(article["crawlTopicDescription"]?.ToString()))evaluationProfile["rules"]=(profile["rules"]?.ToString()??"")+"\nChủ đề yêu cầu của lượt thu thập: "+article["crawlTopicDescription"]!.ToString();
-            var result = await ai.Evaluate(source, evaluationProfile, images);
+            mediaIncomplete |= warnings.Any(w=>w.Contains("chưa tải",StringComparison.OrdinalIgnoreCase)||w.Contains("không tải",StringComparison.OrdinalIgnoreCase)||w.Contains("chưa đọc được link",StringComparison.OrdinalIgnoreCase));
+            var result = ClefSelectionPolicy.Apply(await ai.Evaluate(source, evaluationProfile, images),evaluationProfile);
             var resultWarnings = result["warnings"]!.AsArray().Select(node => node!.ToString()).Concat(warnings).Distinct().ToArray();
-            article["aiStatus"] = warnings.Count > 0 && result["status"]!.ToString() == "recommended" ? "review" : result["status"]!.ToString();
+            article["aiStatus"] = mediaIncomplete && result["status"]!.ToString() == "recommended" ? "review" : result["status"]!.ToString();
+            article["aiSourceLanguage"]=result["sourceLanguage"]?.DeepClone();article["aiTopicRelationship"]=result["topicRelationship"]?.DeepClone();article["aiSelectionVersion"]=result["selectionVersion"]?.DeepClone();article["aiModelStatus"]=result["modelStatus"]?.DeepClone();article["aiSelectionNotes"]=result["selectionNotes"]?.DeepClone();
             article["aiDecision"] = result["decision"]?.DeepClone(); article["aiScore"] = result["score"]!.DeepClone(); article["aiReason"] = result["reason"]!.ToString(); article["aiTopic"] = result["topic"]!.ToString();
             article["aiWarnings"] = new JsonArray(resultWarnings.Select(text => JsonValue.Create(text)).ToArray());
             article["aiEvaluatedAt"] = DateTimeOffset.UtcNow.ToString("O"); article["aiBrandUpdatedAt"] = profile["updatedAt"]?.ToString(); article["aiImagesAnalyzed"] = images.Count;
-            if (article["channelEvaluationRequired"]?.GetValue<bool>() == true)
+            var activeChannels = BrandPolicy.Channels(profile).Where(c => c is not null && BrandPolicy.Flag(c, "active")).ToList();
+            if (article["channelEvaluationRequired"]?.GetValue<bool>() == true || activeChannels.Count > 0)
             {
+                article["channelEvaluationRequired"]=true;
                 var matches = new JsonArray();
                 if (result["status"]?.ToString() != "rejected")
                 {
-                    var activeChannels = BrandPolicy.Channels(profile).Where(c => c is not null && BrandPolicy.Flag(c, "active")).ToList();
                     if (activeChannels.Count == 0) return ServiceResult.Conflict(new { error="Không còn kênh đang bật để đối chiếu bài." });
                     foreach (var channel in activeChannels)
                     {
                         var channelProfile = evaluationProfile.DeepClone();
-                        channelProfile["name"] = channel!["name"]?.ToString() ?? profile["name"]?.ToString();
+                        if(!string.IsNullOrWhiteSpace(channel!["allowedTopics"]?.ToString()))channelProfile["allowedTopics"]=channel["allowedTopics"]!.DeepClone();
+                        channelProfile["channelName"] = channel!["name"]?.ToString();
+                        channelProfile["channelGuidelines"] = channel["contentGuidelines"]?.ToString();
                         foreach (var field in new[] { "tone", "audience" }) if (!string.IsNullOrWhiteSpace(channel[field]?.ToString())) channelProfile[field] = channel[field]!.DeepClone();
-                        channelProfile["rules"] = (channelProfile["rules"]?.ToString() ?? "") + "\nYêu cầu kênh: " + channel["contentGuidelines"]?.ToString() + "\nYêu cầu media: " + channel["imageRequirements"]?.ToString();
-                        var match = await ai.Evaluate(source, channelProfile, images);
-                        matches.Add(new JsonObject { ["channelId"]=channel["id"]?.ToString(), ["name"]=channel["name"]?.ToString(), ["status"]=match["status"]?.ToString(), ["score"]=match["score"]?.DeepClone(), ["reason"]=match["reason"]?.ToString() });
+                        channelProfile["rules"] = (channelProfile["rules"]?.ToString() ?? "") + "\nYêu cầu kênh: " + channel["contentGuidelines"]?.ToString();
+                        var match = ClefSelectionPolicy.Apply(await ai.Evaluate(source, channelProfile, images),channelProfile);
+                        matches.Add(new JsonObject { ["channelId"]=channel["id"]?.ToString(), ["name"]=channel["name"]?.ToString(), ["status"]=match["status"]?.ToString(), ["score"]=match["score"]?.DeepClone(), ["reason"]=match["reason"]?.ToString(), ["sourceLanguage"]=match["sourceLanguage"]?.DeepClone(), ["topicRelationship"]=match["topicRelationship"]?.DeepClone(), ["modelStatus"]=match["modelStatus"]?.DeepClone(), ["selectionNotes"]=match["selectionNotes"]?.DeepClone(), ["warnings"]=match["warnings"]?.DeepClone() });
                     }
                 }
                 SourceGroupPolicy.ApplyChannelVerdict(article, matches);

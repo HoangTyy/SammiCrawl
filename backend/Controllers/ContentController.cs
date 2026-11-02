@@ -14,6 +14,12 @@ public sealed class ContentController(IContentService service) : ControllerBase
     [HttpPost("/api/articles/{id:guid}/draft")]
     public async Task<IActionResult> CreateDraft([FromRoute] Guid id, [FromBody] JsonObject request) => (await service.CreateDraft(id, request)).ToActionResult();
 
+    [HttpPost("/api/articles/{id:guid}/mark-published"),RequestSizeLimit(4096)]
+    public async Task<IActionResult> MarkArticlePublished([FromRoute] Guid id,[FromBody] JsonObject request)=>(await service.MarkArticlePublished(id,request,User.Identity?.Name??"")).ToActionResult();
+
+    [HttpPost("/api/drafts/{id:guid}/mark-published"),RequestSizeLimit(4096)]
+    public async Task<IActionResult> MarkPublished([FromRoute] Guid id,[FromBody] JsonObject request)=>(await service.MarkPublished(id,request,User.Identity?.Name??"")).ToActionResult();
+
     [HttpPost("/api/drafts/{id:guid}/approve")]
     public async Task<IActionResult> ApproveDraft([FromRoute] Guid id, [FromBody] JsonObject request) => (await service.ApproveDraft(id, request, User.Identity?.Name ?? "")).ToActionResult();
 

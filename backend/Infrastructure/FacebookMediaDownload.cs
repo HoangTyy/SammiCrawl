@@ -29,6 +29,7 @@ public static class FacebookMediaDownload
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
         if (!string.IsNullOrEmpty(cookie)) request.Headers.Add("Cookie", cookie);
         if (!string.IsNullOrEmpty(userAgent)) request.Headers.UserAgent.ParseAdd(userAgent);
+        request.Headers.Referrer = new Uri("https://www.facebook.com/");
         using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
         if (!response.IsSuccessStatusCode || response.Content.Headers.ContentLength > limit) return null;
         var ext = response.Content.Headers.ContentType?.MediaType?.ToLowerInvariant() switch

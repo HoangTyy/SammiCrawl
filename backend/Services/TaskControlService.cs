@@ -23,7 +23,7 @@ public sealed class TaskControlService(IProjectRepository db, FacebookCrawlWorke
         var eligible=(await db.ListDocumentsAsync("accounts")).Where(d=>{var a=JsonNode.Parse(d.Json);return a?["deletedAt"] is null&&a?["role"]?.ToString()=="crawl"&&a?["enabled"]?.GetValue<bool>()!=false&&a?["facebookStatus"]?.ToString()=="active"&&!string.IsNullOrEmpty(d.ProtectedSecret);}).Select(a=>a.Id).ToHashSet();
         if(CrawlAccountSelection.Validate(data["crawlAccountIds"],eligible,out _) is string error)return ServiceResult.BadRequest(new{error});
         if(CrawlEvaluationState.ReadinessError(System.Text.Json.JsonSerializer.SerializeToNode(await ai.Status())) is string aiError)return ServiceResult.Json(new{error=aiError},503);
-        data["status"]="pending";data["workerNode"]="Facebook local";data["executionToken"]=Guid.NewGuid().ToString();data["pauseAcknowledged"]=true;
+        data["workerOwnerId"]=worker.OwnerId;data["status"]="pending";data["workerNode"]="Facebook local";data["executionToken"]=Guid.NewGuid().ToString();data["pauseAcknowledged"]=true;
         data["errorCode"]=null;data["errorReason"]="Đã xếp hàng tiếp tục; giữ tiến độ và chống trùng bài cũ.";
         if(!await db.TryUpdateTaskAsync(id,doc.Json,data.ToJsonString(),$"Xếp hàng tiếp tục tác vụ {id}"))return ServiceResult.Conflict(new{error="Lượt đã được máy khác thay đổi hoặc tiếp tục. Tải lại danh sách."});
         if(!worker.Enqueue(id,data["executionToken"]!.ToString()))return ServiceResult.Conflict(new{error="Không thêm được vào hàng đợi."});

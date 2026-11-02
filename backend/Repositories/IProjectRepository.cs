@@ -17,6 +17,8 @@ public interface IProjectRepository
     void AddLog(Audit audit);
     Task ReloadAsync(Document document);
     Task<int> SaveChangesAsync();
+    Task<Document> SaveManualPublicationAsync(Document record,string auditMessage);
+    Task<bool> TryUpdateDraftAsync(Guid id,string expectedJson,string updatedJson,string auditMessage);
     Task<bool> DeleteTaskAsync(Guid id);
     Task<bool> TryUpdateTaskAsync(Guid id, string expectedJson, string updatedJson, string auditMessage);
     Task<bool> TryUpdateBrandAsync(Guid id, string expectedJson, string updatedJson, string auditMessage);

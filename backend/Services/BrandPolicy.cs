@@ -5,7 +5,7 @@ namespace SammiCrawl.Backend.Services;
 
 public static class BrandPolicy
 {
-    public static readonly string[] Fields = ["crawlSourceUrls", "allowedTopics", "forbiddenContent", "verifyInformation", "requireMediaRights", "requireSponsorLabel", "channels"];
+    public static readonly string[] Fields = ["selectionMinScore", "crawlSourceUrls", "allowedTopics", "forbiddenContent", "verifyInformation", "requireMediaRights", "requireSponsorLabel", "channels"];
     public static bool FacebookUrl(string? text, string? type = null) => Uri.TryCreate(text, UriKind.Absolute, out var uri)
         && uri.Scheme == "https" && (uri.Host == "facebook.com" || uri.Host.EndsWith(".facebook.com", StringComparison.OrdinalIgnoreCase))
         && uri.AbsolutePath != "/" && (type != "group" || uri.AbsolutePath.StartsWith("/groups/"))
@@ -35,6 +35,7 @@ public static class BrandPolicy
     }
     public static string? Validate(JsonObject profile)
     {
+        if(profile["selectionMinScore"] is not null&&(profile["selectionMinScore"] is not JsonValue score||!score.TryGetValue<int>(out var minimum)||minimum<0||minimum>100))return "Ngưỡng Clef cần là số nguyên từ 0 đến 100.";
         if (ValidateCrawlSources(profile["crawlSourceUrls"]) is string sourceError) return sourceError;
         if (profile.ContainsKey("crawlSourceUrls")) profile["crawlSourceUrls"] = string.Join("\n", CrawlSources(profile["crawlSourceUrls"]?.ToString()));
         foreach (var field in new[] { "allowedTopics", "forbiddenContent" })
@@ -58,7 +59,7 @@ public static class BrandPolicy
             foreach (var (field, min, max) in new[] { ("dailyTarget", 0, 1000), ("minWords", 1, 3000), ("maxWords", 1, 3000) })
                 if (channel[field] is not JsonValue value || !value.TryGetValue<int>(out var number) || number < min || number > max) return $"{field} cần là số nguyên từ {min} đến {max}.";
             if (Number(channel, "minWords", 0) > Number(channel, "maxWords", 0)) return "Độ dài tối thiểu không được lớn hơn tối đa.";
-            foreach (var textField in new[] { "audience", "tone", "contentGuidelines" })
+            foreach (var textField in new[] { "allowedTopics", "audience", "tone", "contentGuidelines" })
                 if (channel[textField] is not null && (channel[textField] is not JsonValue textValue || !textValue.TryGetValue<string>(out var channelText) || channelText.Length > 5000)) return "Hướng dẫn riêng của kênh tối đa 5.000 ký tự mỗi trường.";
             if (channel["imageRequirements"] is not null && (channel["imageRequirements"] is not JsonValue imageValue || !imageValue.TryGetValue<string>(out var imageText) || imageText.Length > 5000)) return "Yêu cầu hình ảnh cần là văn bản tối đa 5.000 ký tự.";
         }

@@ -233,3 +233,45 @@ Rewrite trong thư viện gửi POST /api/rewrite-jobs (UUID, articleId, channel
 ## Điều khiển lượt cào — 01/11/2026
 
 Cột Thao tác: Tạm dừng cho pending/running, Tiếp tục cho paused/failed và Xóa hẳn bản ghi task (không xóa bài/media/log). DELETE /api/records/tasks/{id} giờ xóa task thật, không còn đổi workerNode thành Đã hủy. POST /api/tasks/{id}/pause và /resume dùng cookie+CSRF. Pause đang chạy chờ thao tác/AI kết thúc và pauseAcknowledged=true mới resume; không nhả model sớm. Resume tạo executionToken mới và xếp cuối hàng đợi, giữ taskID/count/dedup; worker khôi phục số bài theo account/nguồn, các bài Clef đã đánh giá và hoàn tất bài chờ trước khi đọc Facebook. Có thể phải đọc lại feed, không có cursor Facebook bền vững. Claim/state dùng cập nhật conditional theo JSON và token để không chạy queue-entry cũ hoặc ghi đè pause/xóa. Không tự resume sau restart, không tự click cào để thử. Đây chưa phải khóa tài khoản/điều phối crawl toàn cụm; các máy cần cập nhật code để hiểu nút điều khiển mới.
+
+## Khóa cào chung nhiều máy — 01/11/2026
+
+Thay thế mô tả hàng đợi chỉ khóa từng backend ở trên. FacebookCrawlWorker lấy CrawlGlobalLock trước claim pending→running và trước mở browser: PostgreSQL session advisory lock (SQL Server legacy có sp_getapplock Session). Connection riêng, Pooling=false, giữ qua toàn bộ lượt và đóng browser/AI cleanup rồi mới dispose; toàn bộ backend cùng DB dùng chung resource. Máy chưa lấy khóa giữ task pending, không giả status running. FIFO riêng từng máy; giữa các máy tranh khóa, chưa cam kết thứ tự FIFO tuyệt đối.
+
+CrawlGlobalLease kiểm tra kết nối mỗi2giây, mất session thì hủy token liên kết và đóng browser; kiểm tra mất khóa ở State/Cancelled/claim. Task heartbeat5giây, dùng giờ DB qua session khóa để tránh lệch giờ PC. Không tự coi một task running khác là đã dừng: phải có protocol1 + heartbeat quá90giây, và chỉ được phục hồi khi đã lấy khóa DB. Worker bỏ dở được paused/CRAWL_WORKER_LOST, giữ bài, không tự replay. Kiểm tra orphan mỗi10giây khi rảnh và khi chờ lượt; tác vụ legacy không bị tự sửa.
+
+CrawlWorkerIdentity lưu GUID trong volume DataProtection-Keys/sammicrawl-worker-id; CRAWL_WORKER_ID là tên/ID tùy chọn, phải khác giữa các máy. Không sao chép file identity sang máy khác. Startup chỉ paused lượt pending của chính owner, không còn quét và paused mọi running/pending trên DB. Running của owner chết được thu hồi theo heartbeat; không khởi động cào để test. Pending legacy thiếu owner sau restart cần người dùng Tạm dừng→Tiếp tục để vào queue mới.
+
+**Rollout:** mọi máy cào phải pull/build/recreate cùng bản; backend cũ không biết khóa nên vẫn có thể chạy song song. Không ngắt hoặc sửa dữ liệu lượt thật để thử. Khi có lượt legacy đang chạy, worker mới giữ chờ; cần để lượt đó xong hoặc người dùng tạm dừng. DB cần giữ session kết nối; không dùng transaction pooling cho connection khóa. Đây là khóa crawler chung, không thay đổi hàng đợi AI hoặc publisher chưa có.
+
+Tests/CrawlLockChecks dùng PostgreSQL Docker riêng: kiểm tra session/tiến trình độc lập, mất kết nối, heartbeat/orphan và hai worker production trên dữ liệu fixture đã đủ bài (không mở Facebook, không gọi AI). Regression tests/RewriteChecks vẫn kiểm tra pause/resume/xóa và source snapshots. Không coi fixture là chứng minh Facebook DOM hoạt động.
+
+## Clef chọn nguồn nhất quán — 01/11/2026
+
+ClefSelectionPolicy v2 dùng cả gateway và ContentService, idempotent: recommended dưới selectionMinScore (brand, mặc định75/100) chuyển review; không nâng review/rejected lên recommended chỉ vì điểm cao. Topic other/lý do mâu thuẫn/rủi ro xác minh hoặc ảnh không được tự chọn. Rejected vì thiếu xác minh/media hoặc lý do on_topic mâu thuẫn chuyển review để tránh xóa nhầm. Giữ raw aiDecision/modelStatus và selectionNotes để đối chiếu; không tự đánh giá lại/bulk sửa bài cũ. Ngưỡng sửa được trong BrandProfileEditor, backend kiểm0–100; 75 tương ứng mốc Khá phù hợp3/4 của thang Clef. Điểm là mức phù hợp, không phải độ tin cậy xác minh sự thật.
+
+Prompt ưu tiên chủ đề chính và đối tượng thực, không chọn chỉ vì trùng từ khóa/từ sinh viên; meme phải liên quan chủ đề cụ thể. Chọn nguồn để biên tập, không loại chỉ vì thiếu logo/CTA/độ dài/giọng thương hiệu; giữ quy trình kiểm tra trước đăng. Không truyền requiredKeywords thương hiệu như điều kiện bài nguồn bắt buộc. Topic không còn cắt im lặng ở24mục; request vẫn chịu giới hạn kích thước. Có ngày Việt Nam làm mốc cho yêu cầu xác minh thời hạn. Channel giữ tên brand và channelName/channelGuidelines riêng, không đổi brand thành tên kênh hay áp yêu cầu logo Page lên nguồn gốc.
+
+Cảnh báo ảnh feed chưa xác minh độ phân giải được lưu nhưng không tự hạ recommended; missing/unsupported/too many images/video chưa phân tích vẫn review. Đây là sửa logic tổng hợp và prompt, chưa chứng minh chất lượng Clef thật trên bộ dữ liệu người dùng. Tests/RewriteChecks51ca dùng fixture, không gọi model/FB/DB thật. Cần cập nhật cả gateway và client để đầy đủ prompt/guard/media handling. Không gọi AI đánh giá lại lịch sử khi thử.
+
+### Clef v3: ngôn ngữ và chủ đề từng kênh
+
+User phản hồi chọn bài sai kênh và cả tiếng Anh. /v1/systemone thêm choice language (vi/en/mixed/other/unknown) và topic_relation (direct/indirect/off_topic/uncertain), parser kiểm enum. Với brand language VI (mặc định nếu trống), recommended chỉ khi language=vi, topic_relation=direct và các guard v2 đạt. English/mixed/unknown hoặc liên hệ gián tiếp giữ review, không tự đề xuất/xóa. Tiếng Việt có thuật ngữ code/AI/Python/prompt không coi là tiếng Anh. Client không được tự chọn kết quả gateway cũ thiếu bằng chứng ngôn ngữ.
+
+Kênh có allowedTopics riêng trong BrandProfileEditor/ChannelsView và ChannelsService whitelist, kiểm tối đa5.000ký tự. Khi đánh giá kênh, allowedTopics riêng thay danh sách chủ đề rộng của brand; để trống thì fallback brand. Đây là thu hẹp nguồn theo kênh, vẫn giữ cổng quy chuẩn/chủ đề thương hiệu chung. Lưu aiSourceLanguage/aiTopicRelationship và metadata theo kênh để đối chiếu. Không tự điền chủ đề riêng hoặc thay dữ liệu thương hiệu thật; người dùng điền khi các kênh cần khác lĩnh vực. Không tự chấm lại lịch sử.
+
+Đánh giá theo kênh cũng áp dụng cho bài từ link nhập tay/link thương hiệu khi brand có kênh đang bật, không chỉ group-search có cờ cũ. Chỉ chạy khi đánh giá bài mới hoặc người dùng bấm đánh giá lại; không backfill dữ liệu lịch sử.
+
+## Nhận diện ảnh tải chậm — 01/11/2026
+
+FacebookPostMedia.Script thay bộ lọc naturalWidth>200: nhận photo-link/data-src/srcset (chọn nguồn khai báo lớn nhất), ảnh dọc hẹp, SVG ảnh gắn photo-link; loại avatar/comment/media host không được phép. Chờ ảnh đang hiển thị tối đa1,8giây; không scroll riêng từng bài để kích tải. Có ảnh chưa đọc được URL thì warning, không tự coi là bài text-only. Fallback tối đa2URL khác mà DOM thực cung cấp, không sửa query để đoán ảnh gốc. Download vẫn HTTPS/allowlist, không redirect, giới hạn50MB/30giây; thêm Referer Facebook, không log cookie/CDN query. Fixture Chromium chặn toàn bộ mạng, không cào bài thật.
+
+DB chung không đồng nghĩa volume media chung: URL /media/crawl/... có thể tồn tại DB nhưng404 ở máy khác. SourceMedia hiển thị lỗi rõ khi ảnh/video không tải được. Người dùng chọn giữ media riêng từng máy: không triển khai kho chung, không đồng bộ/chuyển file lịch sử. Không coi sửa DOM là đã giải quyết404 do lưu trữ phân tán.
+
+## Đánh dấu đã đăng thủ công — 02/11/2026
+
+Trong modal bản nháp có Đánh dấu đã đăng: bắt buộc link bài HTTPS Facebook, thời điểm đã đăng (giờ Việt Nam, gửi UTC, không tương lai), xác nhận đã đăng thủ công. POST /api/drafts/{id}/mark-published dùng cookie+CSRF; chỉ ghi nhận DB, không gọi Facebook/AI/worker, không cần phiên tài khoản đăng. Cho awaiting_review/approved_pending_worker, không thay nội dung; UI yêu cầu lưu nội dung đang chỉnh trước. Lưu status=published, publishedUrl/publishedAt, publicationMethod=manual, publicationEvidence=user_reported, publishedBy và thời điểm ghi nhận; không giả đã kiểm chứng với Facebook.
+
+Có bộ lọc Đã đăng, link mở bài đã đăng, và nhãn trên bài nguồn khi có bản đã đăng. Báo cáo dùng URL/thời điểm thật do người dùng khai, không plannedAt. Đánh dấu lại cùng URL/time trả bản cũ, khác dữ kiện trả409; save/approve/mark dùng conditional update để tránh ghi đè status khi sửa đồng thời. Không tự đánh dấu/đăng dữ liệu thật để thử. Worker tự đăng vẫn chưa triển khai.
+
+Đánh dấu ngay bài nguồn: nút có cả trong Bài đã thu thập, mở form chọn kênh/link/giờ. POST /api/articles/{id}/mark-published tạo thẳng record published với snapshot bài/kênh, không cần bản nháp trước và không gọi AI/FB. Validate trước khi lưu, không để draft trung gian nếu lỗi. ID ghi nhận ổn định theo bài+kênh+post key, repository khóa transaction để gửi lặp không tạo hai bản. Bài nguồn giữ nội dung/trạng thái Clef, nhãn Đã có bản đăng được tổng hợp từ các record published.

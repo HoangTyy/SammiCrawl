@@ -1,4 +1,4 @@
-export type BrandChannel = { id: string; name: string; type: 'group' | 'page'; url: string; dailyTarget: number; minWords: number; maxWords: number; audience?: string; tone?: string; contentGuidelines?: string; imageRequirements?: string; publishAccountId?: string; requireBranding?: boolean; active?: boolean };
+export type BrandChannel = { id: string; name: string; type: 'group' | 'page'; url: string; dailyTarget: number; minWords: number; maxWords: number; audience?: string; tone?: string; allowedTopics?: string; contentGuidelines?: string; imageRequirements?: string; publishAccountId?: string; requireBranding?: boolean; active?: boolean };
 export type Brand = { id: string; name?: string; facebookGroupUrl?: string; channels?: BrandChannel[]; updatedAt?: string; [key: string]: unknown };
 export function brandChannels(brand?: Brand): BrandChannel[] {
   if (!brand) return [];

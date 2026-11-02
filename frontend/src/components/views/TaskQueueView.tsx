@@ -79,7 +79,7 @@ export const TaskQueueView: React.FC<TaskQueueViewProps> = ({
 
   return (
     <div className="view-container queue-view"><div className="view-header-strip"><h2 className="view-title">Hàng đợi tác vụ<HelpTooltip text="Theo dõi trạng thái và tiến trình các tác vụ thu thập bài viết." /></h2></div>
-      <div className="config-notice">Đây là các lượt cào bài, tách biệt với bản nháp chờ duyệt. Tác vụ tạm dừng sau khi khởi động lại sẽ không tự chạy tiếp.</div>
+      <div className="config-notice">Khóa cào chung trong DB: một lượt chạy, các máy khác chờ. Tất cả máy cần dùng cùng phiên bản; lượt bị gián đoạn không tự chạy lại.</div>
 
       {/* Queue Table Card */}
       <div className="cyber-panel queue-table-panel">
@@ -189,7 +189,7 @@ export const TaskQueueView: React.FC<TaskQueueViewProps> = ({
                       <span className="chip-target-type">{task.targetType.toUpperCase()}</span>
                     </td>
                     <td data-label="Tài nguyên">
-                      <span className="worker-node-tag">{task.workerNode}</span>
+                      <span className="worker-node-tag">{task.workerNode}</span>{task.workerOwnerId&&<small title={task.workerOwnerId}>Máy: {task.workerOwnerId.slice(0,8)}</small>}
                     </td>
                     <td data-label="Tiến độ">
                       <div className="progress-cyber-wrap">

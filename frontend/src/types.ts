@@ -14,6 +14,7 @@ export interface CrawlTask {
   errorCode?: string;
   duplicatesSkipped?: number;
   pauseAcknowledged?: boolean;
+  workerOwnerId?: string;
   clefEvaluatedPosts?: number;
   clefRecommendedPosts?: number;
   clefReviewPosts?: number;
