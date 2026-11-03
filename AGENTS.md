@@ -301,3 +301,12 @@ Kiểm tra: tests/ShareChecks dùng repository RAM và Chromium DOM fixture ch�
 Nội dung: nút Chia sẻ vào nhóm trên danh sách bài nguồn được thay bằng Xóa nội dung, có xác nhận. Xóa mềm bài nguồn qua records/articles; khôi phục trong Thùng rác → Bài viết. Không xóa Facebook, media vật lý hoặc bản nháp/lịch sử đăng liên quan. Không thử xóa dữ liệu thật để QA.
 
 Chỉ tiêu cào: crawledPosts giữ số thô để resume/chống trùng; retainedPosts = crawledPosts - clefRejectedPosts. Worker chỉ đạt maxPosts khi đủ bài không bị loại và Clef đã xử lý hết. UI hiển thị bài giữ lại, Clef đánh giá trên tổng đã quét. Giới hạn quét/account/nhóm vẫn là hàng rào an toàn, có thể dừng thiếu chỉ tiêu khi hết nguồn. Không tự chạy lại tác vụ cũ đã hoàn tất.
+
+03/11/2026 — AiRunner giữ model cùng loại trong VRAM với Ollama:KeepAliveSeconds mặc định 600 (60–3600). PrepareModel chỉ unload model khác và kiểm tra sạch trước khi đổi, không unload model đích trước/sau từng bài. Gate/queue vẫn xử lý inference tuần tự; model idle trong VRAM không có nghĩa đang chạy tác vụ. Máy gateway áp dụng residency, client remote không tự giữ model. Không bảo đảm độc quyền với chương trình ngoài SammiCrawl. Không restart backend khi có lượt đang chạy để triển khai.
+
+Tìm nhóm: chia ngân sách nhóm cho nhiều từ khóa thay vì lấp đầy bởi từ khóa đầu. SourceGroupPolicy.MatchesSearch loại tên nhóm không khớp ý định review (công nghệ sinh học không phải review công nghệ). Sau ít nhất 5 bài/nguồn, nếu >=80% bị loại và chưa có recommended thì chuyển nguồn khi có nguồn khác, sau khi hoàn tất Clef bài hiện tại. Không hạ ngưỡng chất lượng để đủ số.
+
+Hermes: xem docs/HERMES.md. Agent CLI sidecar không publish port, bearer auth, profile riêng, không tools. Mode hermes-plan/hermes-config tái sử dụng queue/gate AI hiện có; model mặc định bonsai-2-hermes:27b. Không tự áp cấu hình, chỉ trả đề xuất, nút điền vào form cần người dùng Lưu. Có nguồn thì không gọi planner. Không chạy agent trực tiếp khi đang có model khác.
+Chống trùng: worker preload source/content keys cùng brand, gồm thùng rác, bỏ qua trước tải media/Clef; ingest khóa DB vẫn là chốt chống race. Chuẩn hóa format Unicode và hậu tố Xem thêm, hỗ trợ pfbid. Không quét/xóa dữ liệu thật để QA.
+
+03/11/2026: User yêu cầu bỏ Hermes khỏi cào vì chậm. Worker không gọi hermes-plan/hermes-select, chỉ Bonsai lập từ khóa khi chưa có nguồn, lọc kỹ thuật/chống trùng và Clef đánh giá. Hermes vẫn có ở chức năng học scope/phân tích riêng; không tự đưa Hermes trở lại cào.

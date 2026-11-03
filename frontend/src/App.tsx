@@ -14,6 +14,7 @@ import { LoginGate } from './components/LoginGate';
 import { api } from './api';
 import type { NavigationTab, CrawlTask, EngineTelemetry, TargetType } from './types';
 import './App.css';
+import { readTab, usePagePosition } from './usePagePosition';
 import { useLiveConnection, useLiveRevision } from './liveUpdates';
 function MainAppShell() {
   const syncStatus = useLiveConnection();
@@ -25,8 +26,9 @@ function MainAppShell() {
     try { await api('/auth/logout', {}); window.location.reload(); }
     catch (error) { setConnection((error as Error).message); setLoggingOut(false); }
   };
-  const [currentTab, setCurrentTab] = useState<NavigationTab>('dashboard');
+  const [currentTab, setCurrentTab] = useState<NavigationTab>(()=>readTab() as NavigationTab);
 
+  usePagePosition(currentTab);
   const [tasks, setTasks] = useState<CrawlTask[]>([]);
   const [logs, setLogs] = useState<string[]>([]);
   const [connection, setConnection] = useState('Đang kết nối backend…');

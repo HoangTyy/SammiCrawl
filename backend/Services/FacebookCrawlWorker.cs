@@ -176,24 +176,48 @@ public sealed class FacebookCrawlWorker(IServiceScopeFactory scopes, IDataProtec
     async Task<List<JsonObject>?> DiscoverGroups(IPage page, JsonObject job, Guid taskId, Guid accountId, int count, int duplicates, CancellationToken ct)
     {
         var found = new Dictionary<string, JsonObject>(); var limit = job["maxGroups"]!.GetValue<int>();
-        foreach (var keyword in SourceGroupPolicy.Keywords(job["groupKeywords"]?.ToString()))
+        var searchKeywords=SourceGroupPolicy.DiverseKeywords(SourceGroupPolicy.Keywords(job["groupKeywords"]?.ToString()));
+        var perKeyword=Math.Max(1,(int)Math.Ceiling((double)limit/Math.Max(1,searchKeywords.Length)));
+        foreach (var keyword in searchKeywords)
         {
             if (await Cancelled(taskId)) throw new OperationCanceledException();
             await State(taskId, "running", $"Đang tìm nhóm theo từ khóa: {keyword}", count:count, duplicates:duplicates);
-            await page.GotoAsync("https://www.facebook.com/search/groups/?q=" + Uri.EscapeDataString(keyword), new() { WaitUntil=WaitUntilState.DOMContentLoaded, Timeout=45000 });
+            var searchResponse=await page.GotoAsync("https://www.facebook.com/search/groups/?q=" + Uri.EscapeDataString(keyword), new() { WaitUntil=WaitUntilState.DOMContentLoaded, Timeout=45000 });
+            if(searchResponse is not null&&searchResponse.Status>=400)
+            {
+                await State(taskId,"paused",$"Facebook trả HTTP {searchResponse.Status} khi tìm nhóm; chưa đọc được nguồn. Không tự thử lại. Kiểm tra phiên và quyền truy cập tìm kiếm.","SOURCE_HTTP_ERROR",count,duplicates);
+                return null;
+            }
             await Delay(taskId, 2500, ct);
-            for (var scroll = 0; scroll < 3 && found.Count < limit; scroll++)
+            var keywordFound=0;
+            for (var scroll = 0; scroll < 3 && found.Count < limit && keywordFound<perKeyword; scroll++)
             {
                 if (!await CheckSession(page, taskId, accountId, count, duplicates)) return null;
-                var links = await page.EvaluateAsync<string>("""
+                string links="[]";
+                // Search results hydrate after DOMContentLoaded; do not treat an
+                // empty first render as exhausted sources. Keep cancellation and
+                // account-limit checks active throughout the bounded wait.
+                for(var hydration=0;hydration<8;hydration++)
+                {
+                    links = await page.EvaluateAsync<string>("""
                     () => JSON.stringify(Array.from(document.querySelectorAll('a[href*="/groups/"]')).map(a=>({name:(a.innerText||a.getAttribute('aria-label')||'').trim(),url:a.href})).filter(a=>a.name.length>1))
                     """);
-                foreach (var item in JsonNode.Parse(links)!.AsArray())
+                    if(JsonNode.Parse(links)!.AsArray().Any(item=>SourceGroupPolicy.CanonicalUrl(item?["url"]?.ToString()) is not null))break;
+                    if(hydration==7)break;
+                    await Delay(taskId,1000,ct);
+                    if(!await CheckSession(page,taskId,accountId,count,duplicates))return null;
+                }
+                var candidates=JsonNode.Parse(links)!.AsArray();
+                var canonicalCount=candidates.Count(item=>SourceGroupPolicy.CanonicalUrl(item?["url"]?.ToString()) is not null);
+                var matchingCount=candidates.Count(item=>SourceGroupPolicy.CanonicalUrl(item?["url"]?.ToString()) is not null&&SourceGroupPolicy.MatchesSearch(item?["name"]?.ToString()??"",keyword));
+                log.LogInformation("Source discovery {TaskId}: query={Keyword}, scroll={Scroll}, namedLinks={Named}, groupLinks={Canonical}, matchingLinks={Matching}",taskId,keyword,scroll,candidates.Count,canonicalCount,matchingCount);
+                foreach (var item in candidates.OrderByDescending(item=>SourceGroupPolicy.SearchScore(item?["name"]?.ToString()??"",keyword)))
                 {
                     var url = SourceGroupPolicy.CanonicalUrl(item?["url"]?.ToString());
-                    if (url is null || found.ContainsKey(url)) continue;
+                    if (url is null || found.ContainsKey(url) || !SourceGroupPolicy.MatchesSearch(item?["name"]?.ToString()??"",keyword)) continue;
                     found[url] = new JsonObject { ["url"]=url, ["name"]=item!["name"]!.ToString()[..Math.Min(300,item["name"]!.ToString().Length)], ["keyword"]=keyword };
-                    if (found.Count >= limit) break;
+                    keywordFound++;
+                    if (found.Count >= limit||keywordFound>=perKeyword) break;
                 }
                 if (found.Count < limit) { await page.Mouse.WheelAsync(0, 800); await Delay(taskId, 1800, ct); }
             }
@@ -210,7 +234,9 @@ public sealed class FacebookCrawlWorker(IServiceScopeFactory scopes, IDataProtec
         try
         {
             await ai.AcquireAsync(ct);
-            try { keywords=SourceDiscovery.Parse(await ai.Rewrite(new RewriteRequest(job["discoveryProfile"]!.ToJsonString(),Mode:"source-keywords",Temperature:0.2))); }
+            try {
+                keywords=SourceDiscovery.Parse(await ai.Rewrite(new RewriteRequest(HermesAdvice.Input(job["discoveryProfile"]!),Mode:"source-keywords",Temperature:0.2)));
+            }
             finally { ai.Release(); }
         }
         catch(OperationCanceledException){throw;}
@@ -234,6 +260,25 @@ public sealed class FacebookCrawlWorker(IServiceScopeFactory scopes, IDataProtec
         }
         throw new OperationCanceledException();
     }
+    JsonArray FilterCandidates(Guid id,JsonArray candidates,HashSet<string> inspected,HashSet<string> priorSources,HashSet<string> priorContents)
+    {
+        var batch=new List<JsonObject>();var batchContents=new HashSet<string>();
+        foreach(var node in candidates)
+        {
+            var item=node!.AsObject();var caption=item["content"]?.ToString()?.Trim()??"";
+            if(SourceGroupPolicy.Truncated(caption)||SourceGroupPolicy.ExpiredInvitation(caption,DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7))))continue;
+            if(caption is "Viết bình luận công khai…" or "Viết bình luận công khai..." or "Write a public comment…")continue;
+            var source=ArticleDeduplication.SourceKey(item["sourceUrl"]?.ToString()??"");
+            var contentKey=ArticleDeduplication.ContentKey(item);
+            if(source is null||priorSources.Contains(source)||inspected.Contains(source)||contentKey is string hash&&(priorContents.Contains(hash)||inspected.Contains("content:"+hash)))continue;
+            if(contentKey is not null&&!batchContents.Add(contentKey))continue;
+            batch.Add(item);if(batch.Count==24)break;
+        }
+        log.LogInformation("Crawl shortlist {TaskId}: extracted={Extracted}, eligibleNew={Eligible}",id,candidates.Count,batch.Count);
+        if(batch.Count==0)return new JsonArray();
+        foreach(var item in batch){inspected.Add(ArticleDeduplication.SourceKey(item["sourceUrl"]!.ToString())!);if(ArticleDeduplication.ContentKey(item) is string key)inspected.Add("content:"+key);}
+        return new JsonArray(batch.Select(item=>item.DeepClone()).ToArray());
+    }
     async Task Run(Guid id,string token,CancellationToken ct)
     {
         JsonObject job;List<Guid> accountIds;CrawlResumeState saved;
@@ -249,6 +294,17 @@ public sealed class FacebookCrawlWorker(IServiceScopeFactory scopes, IDataProtec
         }
         if(!await PrepareSources(id,job,ct))return;
         var target=job["url"]!.ToString();var searchGroups=job["sourceMode"]?.ToString()=="group-search"||job["autoDiscover"]?.GetValue<bool>()==true;var groupCounts=saved.BySource;var visitedGroups=new HashSet<string>(groupCounts.Keys);var brandId=Guid.Parse(job["brandId"]!.ToString());var max=job["maxPosts"]!.GetValue<int>();var count=saved.Captured;var dup=saved.Duplicates;var evaluation=saved.Evaluation;var seen=saved.Seen;
+        var previousSources=new HashSet<string>();var previousContents=new HashSet<string>();var inspectedCandidates=new HashSet<string>();
+        using(var historyScope=scopes.CreateScope())
+        {
+            var history=await historyScope.ServiceProvider.GetRequiredService<IProjectRepository>().ListDocumentsAsync("articles");
+            foreach(var row in history)
+            {
+                var old=JsonNode.Parse(row.Json)!.AsObject();if(old["brandId"]?.ToString()!=brandId.ToString())continue;
+                if(ArticleDeduplication.SourceKey(old["sourceUrl"]?.ToString()??"") is string key)previousSources.Add(key);
+                if(ArticleDeduplication.ContentKey(old) is string contentKey)previousContents.Add(contentKey);
+            }
+        }
         await State(id,"running","Bắt đầu/tiếp tục thu thập, giữ bài đã lưu và kiểm tra trùng.",count:count,duplicates:dup,evaluation:evaluation);
         foreach(var articleId in saved.PendingEvaluation)
         {
@@ -283,7 +339,7 @@ public sealed class FacebookCrawlWorker(IServiceScopeFactory scopes, IDataProtec
             target=group["url"]!.ToString();
             if(searchGroups && !visitedGroups.Contains(target) && visitedGroups.Count>=job["maxGroups"]!.GetValue<int>())continue;
             visitedGroups.Add(target);
-            var groupLimit=searchGroups?job["groupPostLimit"]!.GetValue<int>():max;
+            var groupLimit=searchGroups?Math.Min(job["groupPostLimit"]!.GetValue<int>(),SourceGroupPolicy.SourceQuota(max,targets.Count)):max;
             if(groupCounts.GetValueOrDefault(target)>=groupLimit)continue;
             Guid? sourceGroupId=null;
             if(searchGroups)
@@ -300,20 +356,30 @@ public sealed class FacebookCrawlWorker(IServiceScopeFactory scopes, IDataProtec
                 if(body.Contains("this content isn't available")||body.Contains("nội dung này hiện không hiển thị")||body.Contains("join this group to see"))
                 { await State(id,"running",$"Không đọc được nội dung nhóm {group["name"]}; bỏ qua, không tự tham gia nhóm.",count:count,duplicates:dup,evaluation:evaluation);continue; }
             }
-            for(var scroll=0;scroll<job["maxScrolls"]!.GetValue<int>()&&evaluation.Retained(count)<max&&perAccount<job["accountPostLimit"]!.GetValue<int>()&&groupCounts.GetValueOrDefault(target)<groupLimit;scroll++)
+            var sourceEvaluationStart=evaluation.Evaluated;var sourceRejectedStart=evaluation.Rejected;var sourceRecommendedStart=evaluation.Recommended;
+            var sourceEvaluated=0;var sourceRejected=0;var sourceRecommended=0;var moveToNextSource=false;var emptySelectionBatches=0;
+            for(var scroll=0;!moveToNextSource&&scroll<job["maxScrolls"]!.GetValue<int>()&&evaluation.Retained(count)<max&&perAccount<job["accountPostLimit"]!.GetValue<int>()&&groupCounts.GetValueOrDefault(target)<groupLimit;scroll++)
             {
                 if(await Cancelled(id))throw new OperationCanceledException();
                 if(!await CheckSession(page,id,accountId,count,dup))return;
                 // Expand only visible post text; never click reactions, shares or join controls.
-                var more=page.GetByRole(AriaRole.Button,new(){Name="Xem thêm",Exact=true});
-                for(var k=0;k<Math.Min(await more.CountAsync(),12);k++){try{if(await more.Nth(k).IsVisibleAsync())await more.Nth(k).ClickAsync(new(){Timeout=1500});}catch{/* text may have rerendered */}}
+                for(var expandRound=0;expandRound<3;expandRound++)
+                {
+                    var more=page.GetByRole(AriaRole.Button,new(){NameRegex=new System.Text.RegularExpressions.Regex("^(Xem thêm|See more)$")});
+                    var clicked=false;
+                    // Resolve again after each click: expanding removes/reorders buttons.
+                    for(var k=0;k<Math.Min(await more.CountAsync(),12);k++)
+                    {try{if(await more.Nth(k).IsVisibleAsync()){await more.Nth(k).ClickAsync(new(){Timeout=1500});clicked=true;break;}}catch{/* bounded retry after rerender */}}
+                    if(!clicked)break;
+                    await Delay(id,350,ct);
+                }
                 var metadataCapturedAt = DateTimeOffset.UtcNow;
                 await page.EvaluateAsync(FacebookPostMedia.WaitVisibleImages);
                 var json=await page.EvaluateAsync<string>("(() => { const metadata = " + FacebookPostMetadata.Script + "; const extractMedia = " + FacebookPostMedia.Script + "; return (" + """
                 () => JSON.stringify(Array.from(document.querySelectorAll('h2')).map(h=>{
                   let n=h;
                   for(let i=0;n&&i<14;i++,n=n.parentElement){
-                    if(!n.querySelector('[aria-label="Bày tỏ cảm xúc"],[aria-label="Like"],[aria-label="Thích"]'))continue;
+                    if(!n.querySelector('[aria-label^="Bày tỏ cảm xúc"],[aria-label^="Like"],[aria-label^="Thích"]'))continue;
                     const links=Array.from(n.querySelectorAll('a')).map(a=>a.href);
                     let source=links.find(u=>/\/(posts|permalink)\//.test(u)||u.includes('story_fbid='));
                     if(!source){const photo=links.find(u=>u.includes('set=gm.'));if(photo){const m=photo.match(/set=gm\.(\d+)/);const g=location.pathname.match(/groups\/([^/]+)/);if(m&&g)source='https://www.facebook.com/groups/'+g[1]+'/posts/'+m[1]+'/';}}
@@ -323,15 +389,28 @@ public sealed class FacebookCrawlWorker(IServiceScopeFactory scopes, IDataProtec
                     let text=message?.innerText;
                     if(!text){text=n.innerText;let split=text.indexOf('·\n');if(split>=0)text=text.slice(split+2);else{text=text.replace(/^(Facebook\n)+/,'');const lines=text.split('\n');const author=lines.indexOf(h.innerText);if(author>=0)text=lines.slice(author+2).join('\n');}text=text.split('Đã chia sẻ bài viết')[0].split('Shared post')[0];}
                     text=text.replace(/Ẩn bớt|See less/g,'').trim();
+                    // Fallback containers may include the comment composer after a
+                    // valid caption. Trim UI at the boundary instead of dropping
+                    // the entire post simply because the composer is present.
+                    if(!message){text=text.split(/Tất cả cảm xúc:|All reactions:|Viết bình luận công khai|Write a public comment/)[0].trim();if(text.length<20)return null;}
                     return {sourceUrl:source,content:text,author:h.innerText,metadata:metadata(n,source),...extractMedia(n)};
                   }return null;
                 }).filter(Boolean))
                 """ + ")(); })()");
-                var candidates=JsonNode.Parse(json)!.AsArray();if(candidates.Count==0&&scroll%5==0)await State(id,"running",$"Chưa nhận diện bài mới ở lần cuộn {scroll+1}; tiếp tục trong giới hạn đã đặt.",count:count,duplicates:dup);
-                foreach(var candidate in candidates)
+                var candidates=JsonNode.Parse(json)!.AsArray();
+                log.LogInformation("Crawl feed {TaskId}: source={Source}, scroll={Scroll}, extracted={Extracted}",id,target,scroll,candidates.Count);
+                if(candidates.Count==0&&scroll%5==0)await State(id,"running",$"Chưa nhận diện bài mới ở lần cuộn {scroll+1}; tiếp tục trong giới hạn đã đặt.",count:count,duplicates:dup);
+                var shortlisted=FilterCandidates(id,candidates,inspectedCandidates,previousSources,previousContents);
+                if(shortlisted.Count==0){emptySelectionBatches++;if(emptySelectionBatches>=8&&targets.Count>1){await State(id,"running","Tám lượt cuộn liên tiếp chưa có ứng viên mới phù hợp; chuyển nguồn khác trong giới hạn tác vụ.",count:count,duplicates:dup,evaluation:evaluation);break;}}else emptySelectionBatches=0;
+                foreach(var candidate in shortlisted)
                 {
                     if(evaluation.Retained(count)>=max||perAccount>=job["accountPostLimit"]!.GetValue<int>()||groupCounts.GetValueOrDefault(target)>=groupLimit)break;
+                    var caption=candidate?["content"]?.ToString()?.Trim()??"";
+                    if(SourceGroupPolicy.Truncated(caption)||SourceGroupPolicy.ExpiredInvitation(caption,DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7))))continue;
+                    if(caption.Length==0||caption is "Viết bình luận công khai…" or "Viết bình luận công khai..." or "Write a public comment…")continue;
                     var source=candidate!["sourceUrl"]!.ToString();var sourceKey=ArticleDeduplication.SourceKey(source);if(sourceKey is null||!seen.Add(sourceKey))continue;
+                    if(previousSources.Contains(sourceKey)||ArticleDeduplication.ContentKey(candidate.AsObject()) is string oldContent&&previousContents.Contains(oldContent))
+                    {dup++;await State(id,"running","Bỏ qua bài đã thu thập ở lượt trước, chưa tải media hoặc gọi Clef.",count:count,duplicates:dup,evaluation:evaluation);continue;}
                     // Delay between processed posts, including duplicates; this is not anti-detection evasion.
                     if(seen.Count>1)await Delay(id,Random.Shared.Next(job["delayMinMs"]!.GetValue<int>(),job["delayMaxMs"]!.GetValue<int>()+1),ct);
                     var keywords=(job["keywords"]?.ToString()??"").Split(',',StringSplitOptions.RemoveEmptyEntries|StringSplitOptions.TrimEntries);
@@ -368,6 +447,12 @@ public sealed class FacebookCrawlWorker(IServiceScopeFactory scopes, IDataProtec
                                 return;
                             }
                         }
+                    }
+                    sourceEvaluated=evaluation.Evaluated-sourceEvaluationStart;sourceRejected=evaluation.Rejected-sourceRejectedStart;sourceRecommended=evaluation.Recommended-sourceRecommendedStart;
+                    if(targets.Count>1&&SourceGroupPolicy.PoorSource(sourceEvaluated,sourceRejected,sourceRecommended))
+                    {
+                        await State(id,"running",$"Nguồn có {sourceRejected}/{sourceEvaluated} bài bị loại, chưa có bài phù hợp; chuyển sang nguồn khác.",count:count,duplicates:dup,evaluation:evaluation);
+                        moveToNextSource=true;break;
                     }
                     await State(id,"running",$"Đã thu thập {evaluation.Retained(count)}/{max} bài giữ lại (đã quét {count}); Clef {evaluation.Evaluated}/{count}: phù hợp {evaluation.Recommended}, cần xem lại {evaluation.Review}, đã loại {evaluation.Rejected}; bỏ qua {dup} bài trùng.",count:count,duplicates:dup,evaluation:evaluation);
                 }

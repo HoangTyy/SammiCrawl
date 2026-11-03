@@ -23,10 +23,32 @@ services:
     volumes:
       - ./config/stuxd-tunnel-token.local.env:/run/secrets/stuxd-token:ro
     restart: unless-stopped
+  hermes-adapter:
+    profiles: ["ai-host"]
+    image: nousresearch/hermes-agent:latest
+    user: "10000:10000"
+    init: true
+    entrypoint: ["/opt/hermes/.venv/bin/python", "/adapter/adapter.py"]
+    environment:
+      HERMES_HOME: /runtime
+      HERMES_ADAPTER_KEY: ${HERMES_ADAPTER_KEY:-}
+      HERMES_MODEL: ${HERMES_MODEL:-bonsai-2-hermes:27b}
+      CUSTOM_BASE_URL: http://host.docker.internal:11434/v1
+      OPENAI_BASE_URL: http://host.docker.internal:11434/v1
+      OPENAI_API_KEY: ollama-local
+    volumes:
+      - ./tools/hermes/adapter.py:/adapter/adapter.py:ro
+    tmpfs:
+      - /runtime:uid=10000,gid=10000,mode=0700
+    restart: unless-stopped
   app:
     build: .
     environment:
       ASPNETCORE_URLS: "http://+:8080;http://+:8081"
+      Hermes__Enabled: ${HERMES_ENABLED:-false}
+      Hermes__AdapterUrl: ${HERMES_ADAPTER_URL:-http://hermes-adapter:8082/}
+      Hermes__AdapterKey: ${HERMES_ADAPTER_KEY:-}
+      Hermes__Model: ${HERMES_MODEL:-bonsai-2-hermes:27b}
       WorkerApiKey: ${WORKER_API_KEY:-}
       RemoteAiKey: ${REMOTE_AI_KEY:-}
       Ollama__BaseUrl: ${SAMMICRAWL_OLLAMA_BASE_URL:-http://host.docker.internal:11434}

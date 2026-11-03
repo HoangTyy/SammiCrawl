@@ -21,13 +21,17 @@ var answer = "Trường mình ơi, chiếc thẻ sinh viên này khiến ai cũn
 gateway.MapGet("/bridge/health", () => Results.Json(new { online = true, busy = true, models = new[] { "bonsai-2:27b", "clef-flash:latest" } }));
 gateway.MapPost("/bridge/rewrite", (JsonObject body) => { calls.Add(body.DeepClone().AsObject()); return Results.Json(new { text = answer }); });
 gateway.MapPost("/bridge/evaluate",(JsonObject body)=>{evaluations.Add(body.DeepClone().AsObject());return Results.Json(new JsonObject{["status"]="recommended",["score"]=90,["reason"]="Phù hợp chủ đề mẫu",["topic"]="Chủ đề mẫu",["decision"]=new JsonObject{["language"]=new JsonObject{["choice"]="vi"},["topic_relation"]=new JsonObject{["choice"]="direct"}},["warnings"]=new JsonArray()});});
+var hermesRequests=new List<JsonObject>();
+var hermesFixture=new JsonObject{["summary"]="Nguồn công nghệ sinh học không phù hợp; ưu tiên review sách.",["keywords"]=new JsonArray("review sách","đồ dùng học tập"),["suggestedTopics"]="Review sách",["suggestedRules"]="Không bán hàng"};
+gateway.MapPost("/analyze",(JsonObject request)=>{hermesRequests.Add(request);return Results.Json(new{text=hermesFixture.ToJsonString()});});
 var systemRequests=new List<JsonObject>();
 var planningRequests=new List<JsonObject>();
 gateway.MapGet("/api/tags",()=>Results.Json(new { models=new[]{new{name="bonsai-2:27b"},new{name="clef-flash:latest"}} }));
 gateway.MapPost("/api/chat",(JsonObject body)=>{planningRequests.Add(body.DeepClone().AsObject());return Results.Json(new{message=new{content="review công nghệ\nreview mỹ phẩm\nđồ dùng sinh viên"}});});
 var systemAnswers=new JsonObject{["fit"]=new JsonObject{["choice"]="recommended"},["topic"]=new JsonObject{["choice"]="topic_0"},["suitability"]=new JsonObject{["score"]=3.6},["reason"]=new JsonObject{["choice"]="on_topic"},["language"]=new JsonObject{["choice"]="vi"},["topic_relation"]=new JsonObject{["choice"]="direct"},["source_risk"]=new JsonObject{["noul"]=0.0},["media_risk"]=new JsonObject{["noul"]=0.0}};
-gateway.MapGet("/api/ps",()=>Results.Json(new{models=Array.Empty<object>()}));
-gateway.MapPost("/api/generate",()=>Results.Json(new{}));
+var residentModels=new HashSet<string>();var unloadedModels=new List<string>();var rejectUnload=false;
+gateway.MapGet("/api/ps",()=>Results.Json(new{models=residentModels.Select(n=>new{name=n}).ToArray()}));
+gateway.MapPost("/api/generate",(JsonObject body)=>{var name=body["model"]!.ToString();unloadedModels.Add(name);if(!rejectUnload)residentModels.Remove(name);return Results.Json(new{});});
 gateway.MapPost("/v1/systemone",(JsonObject body)=>{systemRequests.Add(body.DeepClone().AsObject());return Results.Json(new JsonObject{["answers"]=systemAnswers.DeepClone()});});
 await gateway.StartAsync();
 var url = gateway.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
@@ -69,6 +73,32 @@ try
     Check(quotaEvaluation.Retained(10)==0&&!quotaEvaluation.TargetReached(10,10),"ten rejected articles do not meet ten article target");
     for(var i=0;i<10;i++)quotaEvaluation.Record(ServiceResult.Ok(new JsonObject{["aiStatus"]="review",["aiScore"]=60,["aiEvaluatedAt"]=DateTimeOffset.UtcNow.ToString("O")}));
     Check(quotaEvaluation.Retained(20)==10&&quotaEvaluation.TargetReached(20,10),"ten retained replacements meet target after ten rejections");
+    Check(!SourceGroupPolicy.MatchesSearch("Công nghệ Sinh học","review công nghệ sinh viên"),"biotechnology group is not a technology review source");
+    Check(SourceGroupPolicy.MatchesSearch("Hội Review đồ công nghệ","review công nghệ sinh viên"),"technology review source matches without audience words");
+    Check(!SourceGroupPolicy.MatchesSearch("Hội tuyển dụng công nghệ","review công nghệ"),"missing review intent does not match review source");
+    Check(SourceGroupPolicy.PoorSource(5,4,0)&&!SourceGroupPolicy.PoorSource(4,4,0)&&!SourceGroupPolicy.PoorSource(5,4,1),"switch poor source only after sufficient consistently rejected sample");
+    Check(ArticleDeduplication.NormalizeText("Sách hay… Xem thêm")==ArticleDeduplication.NormalizeText("Sách hay"),"UI see-more suffix does not defeat deduplication");
+    Check(ArticleDeduplication.NormalizeText("Sách\u200e hay")==ArticleDeduplication.NormalizeText("Sách hay"),"invisible Facebook formatting does not defeat deduplication");
+    Check(ArticleDeduplication.SourceKey("https://www.facebook.com/page/posts/pfbidAbC123/?ref=x")=="post:pfbidAbC123","Facebook opaque post IDs support canonical deduplication");
+    var advice=HermesAdvice.Parse(hermesFixture.ToJsonString());
+    Check(advice["applied"]!.GetValue<bool>()==false&&advice["keywords"]!.AsArray().Count==2,"Hermes returns bounded advice without applying configuration");
+    try{HermesAdvice.Parse("{\"summary\":\"bad\",\"keywords\":[\"https://facebook.com/groups/123/\"]}");Check(false,"Hermes URL rejection");}catch(InvalidOperationException){Check(true,"Hermes cannot fabricate source links in keyword output");}
+    Check(HermesAdvice.ParseSelection("{\"summary\":\"Không có bài phù hợp\",\"selectedIds\":[]}")["selectedIds"]!.AsArray().Count==0,"Hermes may select no posts rather than force irrelevant content");
+    try{HermesAdvice.ParseSelection("{\"summary\":\"bad\",\"selectedIds\":[\"https://facebook.com/post\"]}");Check(false,"invented post");}catch(InvalidOperationException){Check(true,"Hermes must select feed identifiers rather than invent links");}
+    Check(SourceGroupPolicy.MatchesSearch("Hội Review sách hay","nhóm gợi ý sách đọc cho sinh viên"),"book discovery ignores query boilerplate rather than rejecting relevant book groups");
+    Check(SourceGroupPolicy.MatchesSearch("Hội Review Công Nghệ","cộng đồng review đồ công nghệ cho sinh viên"),"review technology sources match longer Hermes queries");
+    Check(!SourceGroupPolicy.MatchesSearch("Hội Mua Bán Sách Cũ","review sách"),"review discovery does not select book marketplace");
+    Check(!SourceGroupPolicy.MatchesSearch("ĐỒ DÙNG HỌC TẬP IN HÌNH SỈ LẺ","đồ dùng học tập"),"review discovery does not select stationery seller group");
+    Check(!SourceGroupPolicy.MatchesSearch("Hội mua & bán đồ học tập","kinh nghiệm đồ học tập"),"experience query excludes marketplace with ampersand");
+    Check(!SourceGroupPolicy.MatchesSearch("Review Mỹ Phẩm và Skincare","review đồ dùng"),"review intent cannot select cosmetics source");
+    Check(SourceGroupPolicy.SearchScore("Hội Review Sách Hay","review sách")>SourceGroupPolicy.SearchScore("CLB Đọc Sách Offline","review sách"),"rank actual review community ahead of offline club");
+    Check(SourceGroupPolicy.DiverseKeywords(new[]{"hội đọc sách","review sách","review công nghệ","kinh nghiệm đồ học tập"}).SequenceEqual(new[]{"hội đọc sách","review công nghệ","kinh nghiệm đồ học tập","review sách"}),"interleave distinct topics before repeated book queries");
+    Check(SourceGroupPolicy.SourceQuota(10,5)==2&&SourceGroupPolicy.SourceQuota(10,1)==10,"multi-source crawl cannot fill entire target from one community");
+    Check(SourceGroupPolicy.Truncated("Review sách\nXem thêm")&&!SourceGroupPolicy.Truncated("Tôi muốn xem thêm sách hay."),"only trailing expansion control marks incomplete caption");
+    var crawlToday=new DateOnly(2026,11,3);
+    Check(SourceGroupPolicy.ExpiredInvitation("Mời đăng ký offline ngày 17/10/2026",crawlToday),"expired dated invitation cannot enter shortlist");
+    Check(!SourceGroupPolicy.ExpiredInvitation("Review cuốn sách tôi đọc ngày 17/10/2026",crawlToday),"past reading date does not exclude evergreen review");
+    Check(!SourceGroupPolicy.ExpiredInvitation("Mời đăng ký ngày 10/11/2026",crawlToday),"future event is not considered expired");
     var defaultPolicy=new JsonObject();
     Check(ClefSelectionPolicy.Apply(Eval("review",49,"unverified"),defaultPolicy)["status"]?.ToString()=="rejected","49 is rejected before review exemptions");
     Check(ClefSelectionPolicy.Apply(Eval("review",50),defaultPolicy)["status"]?.ToString()=="review","50 is not automatically rejected");
@@ -106,6 +136,21 @@ try
     Check((await localFixtureAi.Evaluate("Chỉ nhắc đến một từ AI.",languageProfile,[]))["status"]?.ToString()=="review","production parser blocks indirect recommendation");
     var planned=await localFixtureAi.Rewrite(new RewriteRequest("{\"allowedTopics\":\"review đồ dùng sinh viên\"}",Mode:"source-keywords",Temperature:0.2));
     Check(SourceDiscovery.Parse(planned).Length==3&&planningRequests.Single()["messages"]![0]!["content"]!.ToString().Contains("tìm nhóm Facebook nguồn")&&!planningRequests.Single()["messages"]![1]!["content"]!.ToString().Contains("Bài viết mới"),"production source planning uses dedicated prompt, not Facebook rewrite prompt");
+    residentModels.Clear();residentModels.Add("clef-flash:latest");unloadedModels.Clear();
+    await localFixtureAi.Evaluate("same model",languageProfile,[]);
+    Check(unloadedModels.Count==0&&systemRequests.Last()["keep_alive"]!.GetValue<int>()==600,"Clef stays resident across evaluations with ten minute idle keepalive");
+    await localFixtureAi.Rewrite(new RewriteRequest("review sách",Mode:"source-keywords"));
+    Check(unloadedModels.SequenceEqual(new[]{"clef-flash:latest"})&&planningRequests.Last()["keep_alive"]!.GetValue<int>()==600,"switch to Bonsai unloads only Clef before inference and keeps Bonsai warm");
+    residentModels.Clear();residentModels.Add("bonsai-2:27b");unloadedModels.Clear();
+    await localFixtureAi.Rewrite(new RewriteRequest("review sách",Mode:"source-keywords"));
+    Check(unloadedModels.Count==0,"consecutive Bonsai requests do not unload resident Bonsai");
+    rejectUnload=true;var priorCalls=systemRequests.Count;
+    try{await localFixtureAi.Evaluate("blocked switch",languageProfile,[]);Check(false,"switch must stop");}catch(InvalidOperationException){Check(systemRequests.Count==priorCalls,"failed model unload blocks inference of another model");}
+    rejectUnload=false;residentModels.Clear();
+    var hermesConfig=new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string,string?>{["Ollama:BaseUrl"]=url,["Hermes:Enabled"]="true",["Hermes:AdapterUrl"]=url,["Hermes:AdapterKey"]=new string('x',40),["Hermes:Model"]="bonsai-2:27b"}).Build();
+    var hermesAi=new AiRunner(hermesConfig);
+    var hermesOutput=HermesAdvice.Parse(await hermesAi.Rewrite(new RewriteRequest("review sách",Mode:"hermes-config")));
+    Check(hermesOutput["applied"]!.GetValue<bool>()==false&&hermesRequests.Single()["prompt"]!.ToString().Contains("Không dùng công cụ"),"Hermes request reaches isolated agent adapter with advisory-only contract");
     systemAnswers["language"]!["choice"]="invalid";
     try{await localFixtureAi.Evaluate("test",languageProfile,[]);Check(false,"invalid language");}catch(AiGatewayException ex){Check(ex.Code=="CLEF_INVALID_OUTPUT","malformed language answer is rejected rather than treated as valid selection");}
     Check(BrandPolicy.Validate(new JsonObject{["selectionMinScore"]=101}) is not null,"invalid selection threshold rejected");

@@ -74,7 +74,7 @@ public sealed class AiGatewayQueue(IOptions<AiQueueOptions> options, TimeProvide
                 waitTimeoutSeconds = Math.Clamp(limits.WaitTimeoutSeconds, 1, 3600), resultTtlSeconds = Math.Clamp(limits.ResultTtlSeconds, 1, 3600) };
         }
     }
-    // A running model is never released or declared cancelled before its real work/unload finishes.
+    // A running model is never released or declared cancelled before its real inference work finishes. Idle model residency is independent of queue ownership.
     public bool CancelQueued(Guid id)
     {
         lock (sync)

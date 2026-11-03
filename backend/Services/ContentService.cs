@@ -236,6 +236,11 @@ public sealed class ContentService(IProjectRepository db, AiRunner ai, IWebHostE
                 images.Add(Convert.ToBase64String(await File.ReadAllBytesAsync(path)));
             }
             var evaluationProfile=profile.DeepClone();
+            if(profile["learnedScope"] is JsonObject learned)
+            {
+                static string Short(JsonNode? n,int max){var value=n?.ToString()??"";return value[..Math.Min(max,value.Length)];}
+                evaluationProfile["rules"]=(profile["rules"]?.ToString()??"")+"\nScope Hermes tham chiếu (không lấn át yêu cầu hiện tại/nội dung cấm): "+Short(learned["summary"],700)+" "+Short(learned["suggestedTopics"],1000);
+            }
             if(!string.IsNullOrWhiteSpace(article["crawlTopicDescription"]?.ToString()))evaluationProfile["rules"]=(profile["rules"]?.ToString()??"")+"\nChủ đề yêu cầu của lượt thu thập: "+article["crawlTopicDescription"]!.ToString();
             mediaIncomplete |= warnings.Any(w=>w.Contains("chưa tải",StringComparison.OrdinalIgnoreCase)||w.Contains("không tải",StringComparison.OrdinalIgnoreCase)||w.Contains("chưa đọc được link",StringComparison.OrdinalIgnoreCase));
             var result = ClefSelectionPolicy.Apply(await ai.Evaluate(source, evaluationProfile, images),evaluationProfile);
@@ -260,7 +265,7 @@ public sealed class ContentService(IProjectRepository db, AiRunner ai, IWebHostE
                         channelProfile["channelName"] = channel!["name"]?.ToString();
                         channelProfile["channelGuidelines"] = channel["contentGuidelines"]?.ToString();
                         foreach (var field in new[] { "tone", "audience" }) if (!string.IsNullOrWhiteSpace(channel[field]?.ToString())) channelProfile[field] = channel[field]!.DeepClone();
-                        channelProfile["rules"] = (channelProfile["rules"]?.ToString() ?? "") + "\nYêu cầu kênh: " + channel["contentGuidelines"]?.ToString();
+                        // Channel guidelines already have their own prompt field; do not duplicate them in rules.
                         var match = ClefSelectionPolicy.Apply(await ai.Evaluate(source, channelProfile, images),channelProfile);
                         matches.Add(new JsonObject { ["channelId"]=channel["id"]?.ToString(), ["name"]=channel["name"]?.ToString(), ["status"]=match["status"]?.ToString(), ["score"]=match["score"]?.DeepClone(), ["reason"]=match["reason"]?.ToString(), ["sourceLanguage"]=match["sourceLanguage"]?.DeepClone(), ["topicRelationship"]=match["topicRelationship"]?.DeepClone(), ["modelStatus"]=match["modelStatus"]?.DeepClone(), ["selectionNotes"]=match["selectionNotes"]?.DeepClone(), ["warnings"]=match["warnings"]?.DeepClone() });
                     }

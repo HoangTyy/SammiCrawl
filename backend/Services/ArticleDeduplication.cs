@@ -5,7 +5,12 @@ using System.Text.Json.Nodes;
 namespace SammiCrawl.Backend.Services;
 public static class ArticleDeduplication
 {
-    public static string NormalizeText(string text) => Regex.Replace(text.Normalize(NormalizationForm.FormKC).Replace("\u200B", "").Replace("\uFEFF", ""), @"\s+", " ").Trim().ToUpperInvariant();
+    public static string NormalizeText(string text)
+    {
+        var value=Regex.Replace(text.Normalize(NormalizationForm.FormKC),@"\p{Cf}", "");
+        value=Regex.Replace(value,@"(?:…|\.\.\.)?\s*(?:Xem thêm|See more)\s*$", "",RegexOptions.IgnoreCase|RegexOptions.CultureInvariant);
+        return Regex.Replace(value,@"\s+", " ").Trim().ToUpperInvariant();
+    }
     public static string? ContentKey(JsonObject article)
     {
         var text = NormalizeText(article["content"]?.ToString() ?? "");
@@ -14,10 +19,10 @@ public static class ArticleDeduplication
     public static string? SourceKey(string raw)
     {
         if (!Uri.TryCreate(raw, UriKind.Absolute, out var u) || u.Scheme != "https" || !(u.Host == "facebook.com" || u.Host.EndsWith(".facebook.com"))) return null;
-        var match = Regex.Match(u.AbsolutePath, @"/(?:posts|permalink)/(\d+)(?:/|$)");
+        var match = Regex.Match(u.AbsolutePath, @"/(?:posts|permalink)/(\d+|pfbid[A-Za-z0-9]+)(?:/|$)");
         if (match.Success) return "post:" + match.Groups[1].Value;
         var query = u.Query.TrimStart('?').Split('&').Select(p => p.Split('=', 2)).Where(p => p.Length == 2).GroupBy(p => p[0], StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.Last()[1], StringComparer.OrdinalIgnoreCase);
-        if (query.TryGetValue("story_fbid", out var id) && Regex.IsMatch(id, @"^\d+$")) return "post:" + id;
+        if (query.TryGetValue("story_fbid", out var id) && Regex.IsMatch(id, @"^(?:\d+|pfbid[A-Za-z0-9]+)$")) return "post:" + id;
         match = Regex.Match(u.AbsolutePath, @"/(?:reel|videos)/(\d+)(?:/|$)");
         if (match.Success) return "video:" + match.Groups[1].Value;
         // Feed/group URLs identify a collection, never a single post.

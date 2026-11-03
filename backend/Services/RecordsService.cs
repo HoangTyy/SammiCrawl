@@ -103,10 +103,11 @@ public sealed class RecordsService(IProjectRepository db, IDataProtectionProvide
         if (kind == "brands" && data.ContainsKey("updatedAt") && data["updatedAt"]?.ToString() != original["updatedAt"]?.ToString()) return ServiceResult.Conflict(new { error = "Hồ sơ vừa đổi ở nơi khác. Tải lại trước khi sửa." });
         var fields = kind switch
         {
-            "brands" => new[] { "selectionMinScore", "crawlSourceUrls", "facebookGroupUrl", "name", "description", "language", "tone", "writingStyle", "audience", "callToAction", "requiredKeywords", "forbiddenKeywords", "rules", "allowedTopics", "forbiddenContent", "verifyInformation", "requireMediaRights", "requireSponsorLabel", "channels" },
+            "brands" => new[] { "scopeExcelContext", "scopeExcelUrl", "selectionMinScore", "crawlSourceUrls", "facebookGroupUrl", "name", "description", "language", "tone", "writingStyle", "audience", "callToAction", "requiredKeywords", "forbiddenKeywords", "rules", "allowedTopics", "forbiddenContent", "verifyInformation", "requireMediaRights", "requireSponsorLabel", "channels" },
             "presets" => new[] { "sourceMode", "groupKeywords", "maxGroups", "groupPostLimit", "url", "destinationPageUrl", "rewriteMinWords", "rewriteMaxWords", "accountPostLimit", "accountRestMinMs", "accountRestMaxMs", "name", "targetType", "maxPosts", "maxScrolls", "delayMinMs", "delayMaxMs", "minLikes", "minComments", "keywords", "topicDescription", "includeComments", "crawlAccountIds", "publishAccountId", "brandId", "branch", "minAiScore", "topPosts", "rewriteInstructions", "rewriteTemperature", "requireApproval" },
             _ => new[] { "text" }
         };
+        if(kind=="brands"&&((data["scopeExcelContext"]?.ToString().Length??0)>7000||(data["scopeExcelUrl"]?.ToString().Length??0)>2000))return ServiceResult.BadRequest(new{error="Excel context quá dài."});
         foreach (var field in fields) if (data.ContainsKey(field)) original[field] = data[field]?.DeepClone();
         if (kind is "brands" or "presets" && string.IsNullOrWhiteSpace(original["name"]?.ToString())) return ServiceResult.BadRequest(new { error = "Tên không được để trống." });
         if (kind == "rewrites" && string.IsNullOrWhiteSpace(original["text"]?.ToString())) return ServiceResult.BadRequest(new { error = "Nội dung không được để trống." });

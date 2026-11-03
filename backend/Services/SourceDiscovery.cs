@@ -9,6 +9,9 @@ public static class SourceDiscovery
         var result=new JsonObject();
         foreach(var field in new[]{"name","description","audience","allowedTopics","forbiddenContent"})
             result[field]=brand[field]?.ToString() is string value ? value[..Math.Min(value.Length,1500)] : "";
+        if(brand["rules"]?.ToString() is string rules)result["currentRules"]=rules[^Math.Min(900,rules.Length)..];
+        if(brand["forbiddenContent"]?.ToString() is string exclusions&&exclusions.Length>1500)result["latestExclusions"]=exclusions[^Math.Min(1000,exclusions.Length)..];
+        if(brand["learnedScope"] is JsonObject learned)result["scopeReference"]=new JsonObject{["summary"]=learned["summary"]?.ToString()?[..Math.Min(700,learned["summary"]!.ToString().Length)],["topics"]=learned["suggestedTopics"]?.ToString()?[..Math.Min(900,learned["suggestedTopics"]!.ToString().Length)],["priority"]="Chỉ tham chiếu; yêu cầu hiện tại và nội dung cấm ưu tiên cao hơn."};
         return result;
     }
     public static string[] Parse(string output)
